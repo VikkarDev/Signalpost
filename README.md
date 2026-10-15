@@ -1,5 +1,7 @@
 # Signalpost
 
+[![CI](https://github.com/VikkarDev/Signalpost/actions/workflows/ci.yml/badge.svg)](https://github.com/VikkarDev/Signalpost/actions/workflows/ci.yml)
+
 A small self-hosted status page with built-in uptime monitoring. One container, one SQLite file, no external services.
 
 It checks your services over HTTP, TCP or ping, keeps 90 days of history, and shows it on a public page in the style of the big hosted status pages. There's an admin area for monitors, incidents, maintenance windows and alerts (Discord and email).
@@ -23,7 +25,7 @@ I built it to run on a Synology NAS behind Cloudflare Tunnel, but it runs anywhe
 ## Quick start
 
 ```bash
-git clone <this repo> signalpost && cd signalpost
+git clone https://github.com/VikkarDev/Signalpost.git signalpost && cd signalpost
 # edit docker-compose.yml: set ADMIN_PASSWORD and PUBLIC_URL
 docker compose up -d --build
 ```

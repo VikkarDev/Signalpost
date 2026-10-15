@@ -4,6 +4,12 @@
   "description": "Self-hosted status page and uptime monitor",
   "author": "VikkarDev",
   "license": "MIT",
+  "homepage": "https://github.com/VikkarDev/Signalpost#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/VikkarDev/Signalpost.git"
+  },
+  "bugs": "https://github.com/VikkarDev/Signalpost/issues",
   "keywords": ["status-page", "uptime", "monitoring", "self-hosted", "synology", "cloudflare-tunnel"],
   "private": true,
   "type": "module",
