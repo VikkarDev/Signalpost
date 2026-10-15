@@ -880,7 +880,7 @@ export function registerAdmin(router) {
       if (!Number.isFinite(red) || red < 0 || red > 100) errs.push('"Red below" must be between 0 and 100.');
       if (!errs.length && red > orange) errs.push('"Red below" can\'t be higher than "Orange below".');
       if (errs.length) return sendHtml(ctx.res, 422, settingsView(ctx, errs));
-      setSetting('layout', str(f, 'layout', 10) === 'list' ? 'list' : 'grid');
+      setSetting('layout', ['list', 'cards'].includes(str(f, 'layout', 10)) ? str(f, 'layout', 10) : 'grid');
       setSetting('history_days', historyDays);
       setSetting('orange_below', orange);
       setSetting('red_below', red);

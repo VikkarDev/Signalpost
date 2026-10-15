@@ -73,7 +73,7 @@ Bar colours per day (defaults, all adjustable under **Settings → Display**):
 - grey: no data
 
 Under **Settings → Display** you can also:
-- switch the public page between the grid layout and a compact list (one row per service)
+- switch the public page between three layouts: the grid, a compact list (one row per service), or cards with a 24-hour response-time graph
 - choose 30, 60 or 90 days of history
 - decide whether slow responses count as up
 - hide the uptime %, response times, "checked x ago" or component descriptions from the public page

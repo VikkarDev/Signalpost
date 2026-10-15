@@ -72,13 +72,67 @@ function componentRow(c, display) {
   </div>`;
 }
 
+// 24h response-time line for the cards layout. Failed buckets are marked along the bottom.
+function sparkline(series) {
+  if (!series || !series.some(Boolean)) return html`<div class="spark-empty muted small">No data yet</div>`;
+  const W = 100;
+  const H = 32;
+  const step = W / (series.length - 1);
+  const values = series.map((b) => (b && b.ms != null ? b.ms : null));
+  const max = Math.max(1, ...values.filter((v) => v != null)) * 1.15;
+  const y = (v) => (H - 2 - (v / max) * (H - 6)).toFixed(1);
+
+  // break the line where there's no data
+  const segments = [];
+  let current = [];
+  values.forEach((v, i) => {
+    if (v == null) {
+      if (current.length) segments.push(current);
+      current = [];
+    } else current.push(`${(i * step).toFixed(1)},${y(v)}`);
+  });
+  if (current.length) segments.push(current);
+
+  const downs = series.map((b, i) => (b && b.down ? i * step : null)).filter((x) => x != null);
+  const latest = [...values].reverse().find((v) => v != null);
+  return html`<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Response time, last 24 hours${latest != null ? `, latest ${latest} ms` : ''}">
+    ${segments.map((pts) =>
+      pts.length === 1
+        ? html`<circle cx="${pts[0].split(',')[0]}" cy="${pts[0].split(',')[1]}" r="1" class="spark-dot"/>`
+        : html`<polyline points="${pts.join(' ')}" class="spark-line" vector-effect="non-scaling-stroke"/>`,
+    )}
+    ${downs.map((x) => html`<rect x="${(x - step / 2).toFixed(1)}" y="${H - 3}" width="${step.toFixed(1)}" height="3" class="spark-down"/>`)}
+  </svg>`;
+}
+
+function componentCard(c, display) {
+  const ms = c.responseMs; // null when the latest check failed
+  return html`<div class="svc-card state-${c.state}">
+    <div class="svc-top">
+      <span class="component-name">${c.name}</span>
+      ${c.description ? html`<span class="help" tabindex="0" data-tip="${c.description}" aria-label="${c.description}">?</span>` : ''}
+    </div>
+    <div class="svc-status"><span class="dot"></span>${c.stateLabel}</div>
+    <div class="svc-stats">
+      ${display.showUptime ? html`<span><strong>${c.uptimeLabel || '-'}</strong> uptime</span>` : ''}
+      ${display.showResponseTime && ms != null ? html`<span><strong>${ms} ms</strong></span>` : ''}
+    </div>
+    ${display.showResponseTime ? sparkline(c.series) : bar({ ...c, days: c.days.slice(-30) })}
+    <div class="svc-foot muted small">
+      <span>${display.showResponseTime ? 'Last 24 hours' : 'Last 30 days'}</span>
+      ${c.lastCheckAt ? html`<span>checked ${relativeTime(c.lastCheckAt)}</span>` : ''}
+    </div>
+  </div>`;
+}
+
 // Ungrouped components and groups, in the order their first component appears.
 function componentSections(components, display) {
-  const list = display.layout === 'list';
-  const wrap = (items) =>
-    list
-      ? html`<div class="rows${display.showUptime ? '' : ' no-uptime'}">${items.map((c) => componentRow(c, display))}</div>`
-      : html`<div class="components">${items.map((c) => componentCell(c, display))}</div>`;
+  const list = display.layout !== 'grid';
+  const wrap = (items) => {
+    if (display.layout === 'cards') return html`<div class="cards">${items.map((c) => componentCard(c, display))}</div>`;
+    if (display.layout === 'list') return html`<div class="rows${display.showUptime ? '' : ' no-uptime'}">${items.map((c) => componentRow(c, display))}</div>`;
+    return html`<div class="components">${items.map((c) => componentCell(c, display))}</div>`;
+  };
   const sections = [];
   const groups = new Map();
   for (const c of components) {

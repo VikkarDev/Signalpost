@@ -403,6 +403,12 @@ test('display settings change the public page', async () => {
   assert.match(listPage.text, /<div class="rows">/);
   assert.match(listPage.text, /<div class="row state-major_outage">/);
   assert.doesNotMatch(listPage.text, /class="components"/);
+  await req('POST', '/admin/settings/display', {
+    _csrf: token, layout: 'cards', history_days: '90', orange_below: '100', red_below: '99', show_uptime: '1', show_response_time: '1',
+  });
+  const cardsPage = await req('GET', '/');
+  assert.match(cardsPage.text, /<div class="cards">/);
+  assert.match(cardsPage.text, /<svg class="spark"/, 'response graph from real checks');
 
   // back to defaults so other tests aren't affected
   await req('POST', '/admin/settings/display', {

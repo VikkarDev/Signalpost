@@ -133,7 +133,7 @@ export function displaySettings() {
     showResponseTime: flag('show_response_time', d.showResponseTime),
     showLastChecked: flag('show_last_checked', d.showLastChecked),
     showDescriptions: flag('show_descriptions', d.showDescriptions),
-    layout: getSetting('layout') === 'list' ? 'list' : d.layout,
+    layout: ['list', 'cards'].includes(getSetting('layout')) ? getSetting('layout') : d.layout,
   };
 }
 
@@ -239,6 +239,28 @@ export function incidentComponentNames(incidentId) {
   );
 }
 
+/**
+ * Response times over the last 24 hours in 30-minute buckets, for the cards layout.
+ * Each bucket: { ms } (average of successful checks), { down: true } or null when nothing ran.
+ */
+export function responseSeries(monitorId, now = Date.now(), hours = 24, buckets = 48) {
+  const start = now - hours * 3600000;
+  const size = (hours * 3600000) / buckets;
+  const rows = all('SELECT checked_at, status, response_ms FROM checks WHERE monitor_id = ? AND checked_at > ? ORDER BY checked_at', monitorId, start);
+  const out = Array.from({ length: buckets }, () => ({ sum: 0, n: 0, down: false, any: false }));
+  for (const r of rows) {
+    const i = Math.min(buckets - 1, Math.floor((r.checked_at - start) / size));
+    const b = out[i];
+    b.any = true;
+    if (r.status === 'down') b.down = true;
+    else if (r.response_ms != null) {
+      b.sum += r.response_ms;
+      b.n++;
+    }
+  }
+  return out.map((b) => (!b.any ? null : b.down && !b.n ? { down: true } : { ms: b.n ? Math.round(b.sum / b.n) : null, down: b.down }));
+}
+
 /** Everything the public page and public API need. */
 export function publicStatus(now = Date.now()) {
   const components = all('SELECT * FROM components WHERE visible = 1 ORDER BY sort_order, name');
@@ -291,6 +313,7 @@ export function publicStatus(now = Date.now()) {
       days: history.days,
       responseMs: opts.showResponseTime && primary ? primary.last_response_ms : null,
       lastCheckAt: opts.showLastChecked ? nonCanary.reduce((acc, m) => Math.max(acc, m.last_check_at || 0), 0) || null : null,
+      series: opts.layout === 'cards' && opts.showResponseTime && primary ? responseSeries(primary.id, now) : null,
     };
   });
 

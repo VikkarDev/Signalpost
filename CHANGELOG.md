@@ -2,7 +2,9 @@
 
 ## 1.2.5
 
-- New compact list layout for the public page (one row per service), selectable under Settings -> Display
+- Two new layouts for the public page, selectable under Settings -> Display:
+  - Compact list: one row per service
+  - Cards: a tile per service with a 24-hour response-time graph
 - "Powered by Signalpost" links to the project on GitHub
 
 ## 1.2.0

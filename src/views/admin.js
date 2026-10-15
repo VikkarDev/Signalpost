@@ -572,7 +572,7 @@ export function settingsPage(ctx, { siteName, heading, footerLinks, logoVersion,
     <form method="post" action="/admin/settings/display" class="card form-grid">
       <h2>Display</h2>
       ${csrfField(ctx.csrf)}
-      ${field('Layout', select('layout', [['grid', 'Grid (two columns, large history bars)'], ['list', 'Compact list (one row per service)']], display.layout))}
+      ${field('Layout', select('layout', [['grid', 'Grid (two columns, large history bars)'], ['list', 'Compact list (one row per service)'], ['cards', 'Cards (tiles with a 24h response graph)']], display.layout))}
       ${field('History on the status page', select('history_days', [[30, '30 days'], [60, '60 days'], [90, '90 days']], display.historyDays))}
       <div class="field-row">
         ${field('Orange below (%)', input('orange_below', display.orangeBelow, { type: 'number', min: 0, max: 100, step: '0.01', required: true }), '100 = any failed check')}
