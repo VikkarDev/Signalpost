@@ -280,11 +280,12 @@ export function componentsPage(ctx, components) {
     <p class="muted">Components are the services shown on the public status page. Their status is derived from the monitors attached to them.</p>
     ${components.length
       ? html`<div class="table-wrap"><table class="table">
-      <thead><tr><th>Order</th><th>Name</th><th>Monitors</th><th>Public</th><th></th></tr></thead>
+      <thead><tr><th>Order</th><th>Name</th><th>Group</th><th>Monitors</th><th>Public</th><th></th></tr></thead>
       <tbody>${components.map(
         (c) => html`<tr>
           <td>${c.sort_order}</td>
           <td><a href="/admin/components/${c.id}">${c.name}</a><div class="muted small">${c.description}</div></td>
+          <td>${c.group_name}</td>
           <td>${c.monitor_count}</td>
           <td>${c.visible ? 'Visible' : html`<span class="pill">hidden</span>`}</td>
           <td class="row-actions">
@@ -297,7 +298,7 @@ export function componentsPage(ctx, components) {
   });
 }
 
-export function componentFormPage(ctx, { component: c, errorList, isNew, monitors = [] }) {
+export function componentFormPage(ctx, { component: c, groups = [], errorList, isNew, monitors = [] }) {
   return adminLayout({
     ...ctx,
     title: isNew ? 'New component' : c.name,
@@ -310,7 +311,9 @@ export function componentFormPage(ctx, { component: c, errorList, isNew, monitor
     <form method="post" action="${isNew ? '/admin/components' : `/admin/components/${c.id}`}" class="card form-grid">
       ${csrfField(ctx.csrf)}
       ${field('Name', input('name', c.name, { required: true, maxlength: 80 }), 'Shown publicly, e.g. "Files" or "Website".')}
-      ${field('Description', input('description', c.description, { maxlength: 300 }), 'Optional; shown in the "?" tooltip on the public page.')}
+      ${field('Description', input('description', c.description, { maxlength: 300 }), 'Optional. Shown in the "?" tooltip on the public page.')}
+      ${field('Group', input('group_name', c.group_name, { maxlength: 60, list: 'group-list', autocomplete: 'off' }), 'Optional. Components with the same group are shown together in a collapsible section.')}
+      <datalist id="group-list">${groups.map((g) => html`<option value="${g}">`)}</datalist>
       ${field('Sort order', input('sort_order', c.sort_order, { type: 'number', min: -1000, max: 100000 }))}
       <div class="field">${checkbox('visible', c.visible, 'Show on the public status page')}</div>
       <div class="form-actions"><button class="btn btn-primary" type="submit">${isNew ? 'Create' : 'Save'}</button> <a class="btn" href="/admin/components">Cancel</a></div>
@@ -539,7 +542,7 @@ export function alertFormPage(ctx, { rule: r, components, errorList, isNew }) {
 
 // ---------------------------------------------------------------- settings
 
-export function settingsPage(ctx, { siteName, heading, sessions, info, errorList }) {
+export function settingsPage(ctx, { siteName, heading, footerLinks, logoVersion, display, sessions, info, errorList }) {
   return adminLayout({
     ...ctx,
     title: 'Settings',
@@ -553,6 +556,7 @@ export function settingsPage(ctx, { siteName, heading, sessions, info, errorList
         ${csrfField(ctx.csrf)}
         ${field('Site name', input('site_name', siteName, { required: true, maxlength: 60 }))}
         ${field('Heading', input('heading', heading, { required: true, maxlength: 80 }), 'Shown as "Current Status: <heading>".')}
+        ${field('Footer links', html`<textarea name="footer_links" rows="3" maxlength="3000" placeholder="Website | https://example.com">${footerLinks}</textarea>`, 'One per line: Label | https://... (up to 6).')}
         <div class="form-actions"><button class="btn btn-primary" type="submit">Save</button></div>
       </form>
       <form method="post" action="/admin/password" class="card form-grid">
@@ -564,6 +568,39 @@ export function settingsPage(ctx, { siteName, heading, sessions, info, errorList
         <div class="form-actions"><button class="btn btn-primary" type="submit">Change password</button></div>
         <p class="hint">Changing the password signs out all other sessions.</p>
       </form>
+    </div>
+    <form method="post" action="/admin/settings/display" class="card form-grid">
+      <h2>Display</h2>
+      ${csrfField(ctx.csrf)}
+      ${field('History on the status page', select('history_days', [[30, '30 days'], [60, '60 days'], [90, '90 days']], display.historyDays))}
+      <div class="field-row">
+        ${field('Orange below (%)', input('orange_below', display.orangeBelow, { type: 'number', min: 0, max: 100, step: '0.01', required: true }), '100 = any failed check')}
+        ${field('Red below (%)', input('red_below', display.redBelow, { type: 'number', min: 0, max: 100, step: '0.01', required: true }))}
+      </div>
+      <p class="hint">A day's bar turns orange or red when that day's uptime drops below these values.</p>
+      <div class="field">${checkbox('slow_counts_as_up', display.slowCountsAsUp, 'Count slow responses as up')}</div>
+      <fieldset class="field"><legend>Show on the public page</legend>
+        ${checkbox('show_uptime', display.showUptime, 'Uptime percentage')}
+        ${checkbox('show_response_time', display.showResponseTime, 'Response time')}
+        ${checkbox('show_last_checked', display.showLastChecked, '"Checked x ago"')}
+        ${checkbox('show_descriptions', display.showDescriptions, 'Component descriptions (? icon)')}
+      </fieldset>
+      <div class="form-actions"><button class="btn btn-primary" type="submit">Save</button></div>
+    </form>
+    <div class="card">
+      <h2>Logo</h2>
+      <div class="logo-row">
+        ${logoVersion
+          ? html`<img class="logo-preview" src="/logo?v=${logoVersion}" alt="Current logo">`
+          : html`<span class="muted">No logo uploaded. The default icon is used.</span>`}
+      </div>
+      <form method="post" action="/admin/branding/logo" enctype="multipart/form-data" class="logo-form">
+        ${csrfField(ctx.csrf)}
+        <input type="file" name="logo" accept="image/png,image/jpeg,image/webp,image/svg+xml" required>
+        <button type="submit" class="btn">Upload</button>
+      </form>
+      <p class="hint">PNG, JPEG, WebP or SVG, up to 256 KB. Square images work best. Also used as the favicon.</p>
+      ${logoVersion ? postButton({ action: '/admin/branding/logo/delete', csrf: ctx.csrf, label: 'Remove logo', cls: 'link-button' }) : ''}
     </div>
     <div class="card">
       <h2>Backup</h2>

@@ -179,4 +179,9 @@ CREATE INDEX idx_alert_log_rule_monitor ON alert_log(rule_id, monitor_id, event,
 CREATE INDEX idx_alert_log_time ON alert_log(sent_at);
 `,
   },
+  {
+    version: 2,
+    name: 'component groups',
+    sql: `ALTER TABLE components ADD COLUMN group_name TEXT NOT NULL DEFAULT '';`,
+  },
 ];

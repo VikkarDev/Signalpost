@@ -1,6 +1,6 @@
 import { html, multiline } from '../lib/html.js';
 import { formatDateTime, formatDay, relativeTime, lastDays, dayKey } from '../lib/time.js';
-import { OVERALL_LABELS, HISTORY_DAYS, formatUptime } from '../status.js';
+import { OVERALL_LABELS, COMPONENT_STATES, formatUptime } from '../status.js';
 import { publicLayout, stateIcon } from './layout.js';
 
 const STATUS_LABEL = { investigating: 'Investigating', identified: 'Identified', monitoring: 'Monitoring', resolved: 'Resolved' };
@@ -16,18 +16,20 @@ const DAY_STATE_LABEL = {
 };
 
 function bar(component) {
-  return html`<div class="bars" role="img" aria-label="${component.name}: ${HISTORY_DAYS}-day history, ${component.uptimeLabel ? `${component.uptimeLabel} uptime` : 'no data yet'}">
+  const n = component.days.length;
+  return html`<div class="bars" role="img" aria-label="${component.name}: ${n}-day history${component.uptimeLabel ? `, ${component.uptimeLabel} uptime` : ''}">
     ${component.days.map((d, i) => {
       const parts = [formatDay(d.day), DAY_STATE_LABEL[d.state]];
       if (d.uptime != null) parts.push(`${formatUptime(d.uptime)} uptime · ${d.checks} checks${d.down ? ` · ${d.down} failed` : ''}`);
+      else if (d.checks && d.down) parts.push(`${d.down} of ${d.checks} checks failed`);
       if (d.maintenance) parts.push(`${d.maintenance} checks during maintenance`);
       if (d.incidents) for (const inc of d.incidents) parts.push(`Incident: ${inc.title}`);
-      return html`<span class="bar bar-${d.state}${i < HISTORY_DAYS - 30 ? ' bar-old' : ''}" data-tip="${parts.join('\n')}"></span>`;
+      return html`<span class="bar bar-${d.state}${i < n - 30 ? ' bar-old' : ''}" data-tip="${parts.join('\n')}"></span>`;
     })}
   </div>`;
 }
 
-function componentCell(c) {
+function componentCell(c, display) {
   return html`<div class="component state-${c.state}">
     <div class="component-head">
       <span class="component-name">${c.name}</span>
@@ -36,19 +38,55 @@ function componentCell(c) {
     </div>
     ${bar(c)}
     <div class="bar-legend">
-      <span class="legend-edge"><span class="d90">${HISTORY_DAYS} days ago</span><span class="d30">30 days ago</span></span>
+      <span class="legend-edge">${c.days.length > 30 ? html`<span class="d90">${c.days.length} days ago</span><span class="d30">30 days ago</span>` : '30 days ago'}</span>
       <span class="legend-line"></span>
-      <span class="legend-uptime">${c.uptimeLabel ? `${c.uptimeLabel} uptime` : 'No data yet'}</span>
-      <span class="legend-line"></span>
+      ${display.showUptime
+        ? html`<span class="legend-uptime">${c.uptimeLabel ? `${c.uptimeLabel} uptime` : 'No data yet'}</span>
+            <span class="legend-line"></span>`
+        : ''}
       <span class="legend-edge">Today</span>
     </div>
     <div class="component-meta">
       <span class="component-state">${c.stateLabel}</span>
-      ${c.lastCheckAt
-        ? html`<span class="muted">${c.responseMs != null ? `${c.responseMs} ms · ` : ''}checked ${relativeTime(c.lastCheckAt)}</span>`
+      ${c.lastCheckAt || c.responseMs != null
+        ? html`<span class="muted">${[c.responseMs != null ? `${c.responseMs} ms` : null, c.lastCheckAt ? `checked ${relativeTime(c.lastCheckAt)}` : null].filter(Boolean).join(' · ')}</span>`
         : ''}
     </div>
   </div>`;
+}
+
+// Ungrouped components and groups, in the order their first component appears.
+function componentSections(components, display) {
+  const sections = [];
+  const groups = new Map();
+  for (const c of components) {
+    if (!c.group) {
+      const last = sections.at(-1);
+      if (last && !last.name) last.items.push(c);
+      else sections.push({ name: null, items: [c] });
+    } else if (groups.has(c.group)) {
+      groups.get(c.group).items.push(c);
+    } else {
+      const g = { name: c.group, items: [c] };
+      groups.set(c.group, g);
+      sections.push(g);
+    }
+  }
+  return sections.map((s) => {
+    if (!s.name) return html`<div class="components">${s.items.map((c) => componentCell(c, display))}</div>`;
+    const known = s.items.filter((c) => c.state !== 'unknown');
+    const state = known.length
+      ? known.reduce((a, c) => (COMPONENT_STATES[c.state].rank > COMPONENT_STATES[a].rank ? c.state : a), 'operational')
+      : 'unknown';
+    return html`<details class="group state-${state}" data-group="${s.name}" open>
+      <summary class="group-head">
+        <span class="group-name">${s.name}</span>
+        <span class="muted small">${s.items.length === 1 ? '1 service' : `${s.items.length} services`}</span>
+        <span class="state-icon" title="${COMPONENT_STATES[state].label}">${stateIcon(state)}</span>
+      </summary>
+      <div class="components">${s.items.map((c) => componentCell(c, display))}</div>
+    </details>`;
+  });
 }
 
 function incidentBlock(inc, { link = true } = {}) {
@@ -98,7 +136,7 @@ export function statusPage(data, past) {
   <section class="section" aria-labelledby="current">
     <h1 id="current" class="page-title">Current Status: ${data.heading}</h1>
     ${data.components.length
-      ? html`<div class="components">${data.components.map(componentCell)}</div>`
+      ? componentSections(data.components, data.display)
       : html`<div class="empty">No services have been added yet.</div>`}
   </section>
 
@@ -122,7 +160,7 @@ export function statusPage(data, past) {
     title: `${data.siteName}`,
     siteName: data.siteName,
     body,
-    refresh: true,
+    live: true,
     description: `${OVERALL_LABELS[overall]}. Live service status.`,
   });
 }

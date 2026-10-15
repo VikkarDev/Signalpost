@@ -42,3 +42,64 @@
   });
   window.addEventListener('scroll', hide, { passive: true });
 })();
+
+// Live updates: re-fetch the page every N seconds and swap in the new <main>,
+// keeping scroll position and which groups are collapsed. Paused while the tab is hidden.
+(function () {
+  'use strict';
+  var seconds = Number(document.body.getAttribute('data-live'));
+  if (!seconds || !window.fetch || !window.DOMParser) return;
+  var timer = null;
+  var busy = false;
+
+  function groupStates() {
+    var states = {};
+    Array.prototype.forEach.call(document.querySelectorAll('details[data-group]'), function (d) {
+      states[d.getAttribute('data-group')] = d.open;
+    });
+    return states;
+  }
+
+  function refresh() {
+    if (busy) return;
+    busy = true;
+    fetch(window.location.pathname, { cache: 'no-store', credentials: 'same-origin' })
+      .then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.text();
+      })
+      .then(function (text) {
+        var doc = new DOMParser().parseFromString(text, 'text/html');
+        var next = doc.querySelector('main');
+        var current = document.querySelector('main');
+        if (!next || !current) return;
+        var states = groupStates();
+        current.innerHTML = next.innerHTML;
+        Array.prototype.forEach.call(current.querySelectorAll('details[data-group]'), function (d) {
+          var name = d.getAttribute('data-group');
+          if (Object.prototype.hasOwnProperty.call(states, name)) d.open = states[name];
+        });
+        document.title = doc.title;
+        var tip = document.getElementById('tooltip');
+        if (tip) tip.hidden = true;
+      })
+      .catch(function () {
+        /* offline or server restarting; try again next round */
+      })
+      .then(function () {
+        busy = false;
+        schedule();
+      });
+  }
+
+  function schedule() {
+    clearTimeout(timer);
+    if (!document.hidden) timer = setTimeout(refresh, seconds * 1000);
+  }
+
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) clearTimeout(timer);
+    else refresh();
+  });
+  schedule();
+})();

@@ -1,6 +1,7 @@
 import { html, raw } from '../lib/html.js';
+import { branding } from '../branding.js';
 
-export const VERSION = '1.1.0';
+export const VERSION = '1.2.0';
 
 export const icons = {
   check: raw('<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 1 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/></svg>'),
@@ -35,7 +36,8 @@ export function stateIcon(state) {
   }
 }
 
-export function publicLayout({ title, siteName, body, refresh = false, description = '' }) {
+export function publicLayout({ title, siteName, body, live = false, description = '' }) {
+  const { logoVersion, links } = branding();
   return html`<!doctype html>
 <html lang="en">
 <head>
@@ -43,20 +45,23 @@ export function publicLayout({ title, siteName, body, refresh = false, descripti
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${title}</title>
 ${description ? html`<meta name="description" content="${description}">` : ''}
-${refresh ? raw('<meta http-equiv="refresh" content="60">') : ''}
+${live ? raw('<noscript><meta http-equiv="refresh" content="60"></noscript>') : ''}
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#f6f8fa" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)">
-<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+${logoVersion
+  ? html`<link rel="icon" href="/logo?v=${logoVersion}">`
+  : html`<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">`}
+<link rel="alternate" type="application/atom+xml" title="${siteName}" href="/feed.xml">
 <script src="/static/theme.js?v=${VERSION}"></script>
 <link rel="stylesheet" href="/static/style.css?v=${VERSION}">
 <script src="/static/app.js?v=${VERSION}" defer></script>
 </head>
-<body class="public">
+<body class="public"${live ? html` data-live="30"` : ''}>
 <header class="hero">
   <div class="hero-art" aria-hidden="true"></div>
   <div class="container hero-inner">
-    <a class="brand" href="/">${logo}<span>${siteName}</span></a>
+    <a class="brand" href="/">${logoVersion ? html`<img class="logo-img" src="/logo?v=${logoVersion}" alt="" width="28" height="28">` : logo}<span>${siteName}</span></a>
     ${themeToggle}
   </div>
 </header>
@@ -65,8 +70,8 @@ ${body}
 </main>
 <footer class="container site-footer">
   <a href="/history">Incident history</a>
-  <span aria-hidden="true">·</span>
-  <a href="/api/v1/status">JSON API</a>
+  <a href="/feed.xml">RSS</a>
+  ${links.map((l) => html`<a href="${l.url}" rel="noopener">${l.label}</a>`)}
   <span class="footer-right">Powered by Signalpost</span>
 </footer>
 <div class="tooltip" id="tooltip" role="tooltip" hidden></div>

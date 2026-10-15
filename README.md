@@ -12,13 +12,14 @@ I built it to run on a Synology NAS behind Cloudflare Tunnel, but it runs anywhe
 
 ## Features
 
-- Public status page with overall banner, per-service 90-day history bars and uptime percentage.
+- Public status page with overall banner, per-service history bars (30, 60 or 90 days) and uptime percentage. It updates itself without reloading.
+- Group related services into collapsible sections, upload your own logo, and add footer links.
 - Light and dark theme (follows your system, or pick one), and both the status page and the admin area work on phones.
 - HTTP(S), TCP and ping checks. Configurable interval, timeout, expected status codes, keyword match, "slow" threshold and how many failures in a row count as down.
 - Separate **internal**, **public** and **canary** checks, so you can tell "the app is down" apart from "the tunnel/DNS/internet is down" (more below).
 - Incidents with a public timeline, and maintenance windows that pause alerts and don't count against uptime.
 - Alerts to Discord webhooks and email, with rules per event type, per service and optional reminders while something stays down. Also warns before TLS certificates expire.
-- Read-only JSON API at `/api/v1/status`.
+- RSS/Atom feed of incidents and maintenance at `/feed.xml`, and a read-only JSON API at `/api/v1/status`.
 - Small footprint: about 30-60 MB RAM, a single dependency (nodemailer), Node 24's built-in SQLite.
 
 ![Admin dashboard, dark theme](docs/screenshot-admin-dark.png)
@@ -63,13 +64,18 @@ Uptime is `(up + slow) / all checks`. It's only calculated from checks that actu
 
 A component's uptime is its worst monitor's uptime. Canaries are never counted.
 
-Bar colours per day:
+Bar colours per day (defaults, all adjustable under **Settings → Display**):
 - green: no failures
 - yellow: some slow responses
-- orange: failures, but at least 99% up
+- orange: below 100% (any failed check)
 - red: below 99%
 - blue: maintenance only
 - grey: no data
+
+Under **Settings → Display** you can also:
+- choose 30, 60 or 90 days of history
+- decide whether slow responses count as up
+- hide the uptime %, response times, "checked x ago" or component descriptions from the public page
 
 Individual check results are kept for 14 days (`RAW_RETENTION_DAYS`). The daily totals behind the bars are kept for 400 days.
 
@@ -108,7 +114,7 @@ services:
   signalpost:
     build:
       context: .
-    image: signalpost:1.1.0
+    image: signalpost:1.2.0
     container_name: signalpost
     restart: unless-stopped
     init: true
@@ -170,6 +176,10 @@ A typical setup for one service:
 Defaults that work well: 60 s interval, 10 s timeout, 2 failures before down.
 - For apps behind a login page, allow `401` in the expected status codes.
 - Only tick "ignore TLS errors" for internal services with self-signed certificates.
+
+To group services on the public page, give components the same **Group** name (e.g. "Home apps"). Your logo and footer links are under **Settings**.
+
+To follow incidents in Discord without alert rules, point any RSS bot at `https://your-status-page/feed.xml`.
 
 For Discord alerts, create a webhook in your server (Server Settings → Integrations → Webhooks) and paste the URL into a new alert rule. **Send test** confirms it works.
 

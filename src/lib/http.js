@@ -89,19 +89,35 @@ export function isHttps(req) {
 
 const MAX_BODY = 64 * 1024;
 
-export function readForm(req) {
+/**
+ * Read a POST body. URL-encoded forms always; multipart only when `allowFiles` is set
+ * (files end up in form._files as { filename, type, data }).
+ */
+export function readForm(req, { maxBytes = MAX_BODY, allowFiles = false } = {}) {
   return new Promise((resolve, reject) => {
-    const type = (req.headers['content-type'] || '').split(';')[0].trim();
-    if (type !== 'application/x-www-form-urlencoded') {
+    const header = req.headers['content-type'] || '';
+    const type = header.split(';')[0].trim().toLowerCase();
+    const multipart = type === 'multipart/form-data';
+    if (type !== 'application/x-www-form-urlencoded' && !(multipart && allowFiles)) {
       reject(new HttpError(415, 'Unsupported content type'));
       req.resume();
       return;
+    }
+    let boundary = null;
+    if (multipart) {
+      const m = /boundary=(?:"([^"]+)"|([^;\s]+))/i.exec(header);
+      boundary = m && (m[1] || m[2]);
+      if (!boundary || boundary.length > 200) {
+        reject(new HttpError(400, 'Malformed upload'));
+        req.resume();
+        return;
+      }
     }
     let size = 0;
     const chunks = [];
     req.on('data', (c) => {
       size += c.length;
-      if (size > MAX_BODY) {
+      if (size > maxBytes) {
         reject(new HttpError(413, 'Request body too large'));
         req.destroy();
         return;
@@ -109,7 +125,12 @@ export function readForm(req) {
       chunks.push(c);
     });
     req.on('end', () => {
-      const params = new URLSearchParams(Buffer.concat(chunks).toString('utf8'));
+      const body = Buffer.concat(chunks);
+      if (multipart) {
+        resolve(parseMultipart(body, boundary));
+        return;
+      }
+      const params = new URLSearchParams(body.toString('utf8'));
       const form = {};
       for (const [k, v] of params) {
         if (k in form) form[k] = [].concat(form[k], v);
@@ -119,6 +140,32 @@ export function readForm(req) {
     });
     req.on('error', reject);
   });
+}
+
+function parseMultipart(buf, boundary) {
+  const delim = Buffer.from(`--${boundary}`);
+  const form = { _files: {} };
+  let pos = buf.indexOf(delim);
+  while (pos !== -1) {
+    pos += delim.length;
+    if (buf[pos] === 0x2d && buf[pos + 1] === 0x2d) break; // closing "--"
+    pos += 2; // CRLF after the delimiter
+    const headerEnd = buf.indexOf('\r\n\r\n', pos);
+    if (headerEnd === -1) break;
+    const next = buf.indexOf(delim, headerEnd + 4);
+    if (next === -1) break;
+    const headers = buf.subarray(pos, headerEnd).toString('utf8');
+    const content = buf.subarray(headerEnd + 4, next - 2); // drop the CRLF before the next delimiter
+    const name = /name="([^"]*)"/i.exec(headers)?.[1];
+    const filename = /filename="([^"]*)"/i.exec(headers)?.[1];
+    const ctype = /content-type:\s*([^\r\n;]+)/i.exec(headers)?.[1]?.trim().toLowerCase();
+    if (name) {
+      if (filename !== undefined) form._files[name] = { filename, type: ctype || '', data: Buffer.from(content) };
+      else form[name] = content.toString('utf8');
+    }
+    pos = next;
+  }
+  return form;
 }
 
 export function securityHeaders(res, nonce) {

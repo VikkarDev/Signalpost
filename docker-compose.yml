@@ -7,7 +7,7 @@ services:
   signalpost:
     build:
       context: .
-    image: signalpost:1.1.0
+    image: signalpost:1.2.0
     container_name: signalpost
     restart: unless-stopped
     init: true

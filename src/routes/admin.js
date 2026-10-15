@@ -18,8 +18,9 @@ import {
 } from '../auth.js';
 import { scheduler } from '../monitor/engine.js';
 import { parseExpectedStatus, HOST_RE } from '../monitor/probes.js';
-import { liveComponentState, diagnose, monitorUptime, componentHistory, INCIDENT_STATUSES, INCIDENT_IMPACTS } from '../status.js';
+import { liveComponentState, diagnose, monitorUptime, componentHistory, displaySettings, INCIDENT_STATUSES, INCIDENT_IMPACTS } from '../status.js';
 import { notifyIncident, notifyMaintenance, sendTest, validateRuleTarget } from '../notify/index.js';
+import { saveLogo, removeLogo, branding, saveFooterLinks } from '../branding.js';
 import * as V from '../views/admin.js';
 
 const FLASH = {
@@ -32,6 +33,8 @@ const FLASH = {
   password: ['ok', 'Password changed. Other sessions were signed out.'],
   revoked: ['ok', 'All other sessions were signed out.'],
   posted: ['ok', 'Update posted.'],
+  logo: ['ok', 'Logo updated.'],
+  logo_removed: ['ok', 'Logo removed.'],
 };
 
 // ------------------------------------------------------------------ helpers
@@ -78,7 +81,7 @@ function components() {
 }
 
 /** Wrap a handler: require a valid session; for POST also parse the form and verify CSRF. */
-function auth(handler) {
+function auth(handler, formOptions = {}) {
   return async (ctx) => {
     const s = loadSession(ctx.req);
     if (!s) {
@@ -88,7 +91,7 @@ function auth(handler) {
     ctx.user = s.user;
     ctx.session = s.session;
     if (ctx.req.method === 'POST') {
-      ctx.form = await readForm(ctx.req);
+      ctx.form = await readForm(ctx.req, formOptions);
       if (!checkCsrf(ctx.session, str(ctx.form, '_csrf', 200))) {
         log.warn('csrf validation failed', { ip: ctx.ip, path: ctx.url.pathname });
         throw new HttpError(403, 'Invalid or missing form token. Reload the page and try again.');
@@ -410,14 +413,17 @@ export function registerAdmin(router) {
     '/admin/components/new',
     auth((ctx) => {
       const next = (get('SELECT MAX(sort_order) AS s FROM components').s ?? 0) + 10;
-      sendHtml(ctx.res, 200, V.componentFormPage(view(ctx), { component: { name: '', description: '', sort_order: next, visible: 1 }, isNew: true }));
+      sendHtml(ctx.res, 200, V.componentFormPage(view(ctx), { component: { name: '', description: '', group_name: '', sort_order: next, visible: 1 }, groups: groupNames(), isNew: true }));
     }),
   );
+
+  const groupNames = () => all("SELECT DISTINCT group_name AS g FROM components WHERE group_name != '' ORDER BY g").map((r) => r.g);
 
   const parseComponent = (form) => {
     const c = {
       name: str(form, 'name', 80),
       description: str(form, 'description', 300),
+      group_name: str(form, 'group_name', 60),
       sort_order: intOrNull(form, 'sort_order') ?? 0,
       visible: bool(form, 'visible') ? 1 : 0,
     };
@@ -431,11 +437,11 @@ export function registerAdmin(router) {
     '/admin/components',
     auth((ctx) => {
       const { c, errs } = parseComponent(ctx.form);
-      if (errs.length) return sendHtml(ctx.res, 422, V.componentFormPage(view(ctx), { component: c, errorList: errs, isNew: true }));
+      if (errs.length) return sendHtml(ctx.res, 422, V.componentFormPage(view(ctx), { component: c, groups: groupNames(), errorList: errs, isNew: true }));
       const now = Date.now();
       const { lastInsertRowid } = run(
-        'INSERT INTO components (name, description, sort_order, visible, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
-        c.name, c.description, c.sort_order, c.visible, now, now,
+        'INSERT INTO components (name, description, group_name, sort_order, visible, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        c.name, c.description, c.group_name, c.sort_order, c.visible, now, now,
       );
       log.info('component created', { id: Number(lastInsertRowid), name: c.name, by: ctx.user.username });
       redirect(ctx.res, `/admin/components/${lastInsertRowid}?ok=created`);
@@ -448,7 +454,7 @@ export function registerAdmin(router) {
       const id = idParam(ctx);
       const c = mustGet('SELECT * FROM components WHERE id = ?', id);
       const monitors = all('SELECT * FROM monitors WHERE component_id = ? ORDER BY name', id);
-      sendHtml(ctx.res, 200, V.componentFormPage(view(ctx), { component: c, isNew: false, monitors }));
+      sendHtml(ctx.res, 200, V.componentFormPage(view(ctx), { component: c, groups: groupNames(), isNew: false, monitors }));
     }),
   );
 
@@ -458,8 +464,11 @@ export function registerAdmin(router) {
       const id = idParam(ctx);
       mustGet('SELECT id FROM components WHERE id = ?', id);
       const { c, errs } = parseComponent(ctx.form);
-      if (errs.length) return sendHtml(ctx.res, 422, V.componentFormPage(view(ctx), { component: { ...c, id }, errorList: errs, isNew: false }));
-      run('UPDATE components SET name = ?, description = ?, sort_order = ?, visible = ?, updated_at = ? WHERE id = ?', c.name, c.description, c.sort_order, c.visible, Date.now(), id);
+      if (errs.length) return sendHtml(ctx.res, 422, V.componentFormPage(view(ctx), { component: { ...c, id }, groups: groupNames(), errorList: errs, isNew: false }));
+      run(
+        'UPDATE components SET name = ?, description = ?, group_name = ?, sort_order = ?, visible = ?, updated_at = ? WHERE id = ?',
+        c.name, c.description, c.group_name, c.sort_order, c.visible, Date.now(), id,
+      );
       redirect(ctx.res, `/admin/components/${id}?ok=saved`);
     }),
   );
@@ -812,7 +821,7 @@ export function registerAdmin(router) {
   );
 
   // ---------- settings
-  const settingsView = (ctx, errorList) => {
+  const settingsView = (ctx, errorList, footerLinksText) => {
     let dbSize = 'unknown';
     try {
       const file = path.join(config.dataDir, 'signalpost.db');
@@ -824,6 +833,9 @@ export function registerAdmin(router) {
     return V.settingsPage(view(ctx), {
       siteName: getSetting('site_name', config.siteNameDefault),
       heading: getSetting('heading', 'Services'),
+      footerLinks: footerLinksText ?? getSetting('footer_links', ''),
+      logoVersion: branding().logoVersion,
+      display: displaySettings(),
       sessions: listSessions(ctx.user.id).map((s) => ({ ...s, current: s.id_hash === ctx.session.id_hash })),
       info: {
         sqlite: get('SELECT sqlite_version() AS v').v,
@@ -845,10 +857,58 @@ export function registerAdmin(router) {
     auth((ctx) => {
       const siteName = str(ctx.form, 'site_name', 60);
       const heading = str(ctx.form, 'heading', 80);
-      if (!siteName || !heading) return sendHtml(ctx.res, 422, settingsView(ctx, ['Site name and heading are required.']));
+      const footerLinks = str(ctx.form, 'footer_links', 3000);
+      if (!siteName || !heading) return sendHtml(ctx.res, 422, settingsView(ctx, ['Site name and heading are required.'], footerLinks));
+      const linkErrors = saveFooterLinks(footerLinks);
+      if (linkErrors.length) return sendHtml(ctx.res, 422, settingsView(ctx, linkErrors, footerLinks));
       setSetting('site_name', siteName);
       setSetting('heading', heading);
       redirect(ctx.res, '/admin/settings?ok=saved');
+    }),
+  );
+
+  router.post(
+    '/admin/settings/display',
+    auth((ctx) => {
+      const f = ctx.form;
+      const historyDays = Number(str(f, 'history_days', 4));
+      const orange = Number(str(f, 'orange_below', 10));
+      const red = Number(str(f, 'red_below', 10));
+      const errs = [];
+      if (![30, 60, 90].includes(historyDays)) errs.push('History must be 30, 60 or 90 days.');
+      if (!Number.isFinite(orange) || orange < 0 || orange > 100) errs.push('"Orange below" must be between 0 and 100.');
+      if (!Number.isFinite(red) || red < 0 || red > 100) errs.push('"Red below" must be between 0 and 100.');
+      if (!errs.length && red > orange) errs.push('"Red below" can\'t be higher than "Orange below".');
+      if (errs.length) return sendHtml(ctx.res, 422, settingsView(ctx, errs));
+      setSetting('history_days', historyDays);
+      setSetting('orange_below', orange);
+      setSetting('red_below', red);
+      for (const key of ['slow_counts_as_up', 'show_uptime', 'show_response_time', 'show_last_checked', 'show_descriptions']) {
+        setSetting(key, bool(f, key) ? '1' : '0');
+      }
+      redirect(ctx.res, '/admin/settings?ok=saved');
+    }),
+  );
+
+  router.post(
+    '/admin/branding/logo',
+    auth(
+      (ctx) => {
+        const file = ctx.form._files?.logo;
+        const problem = saveLogo(file?.data);
+        if (problem) return sendHtml(ctx.res, 422, settingsView(ctx, [problem]));
+        log.info('logo updated', { by: ctx.user.username, bytes: file.data.length });
+        redirect(ctx.res, '/admin/settings?ok=logo');
+      },
+      { allowFiles: true, maxBytes: 400 * 1024 },
+    ),
+  );
+
+  router.post(
+    '/admin/branding/logo/delete',
+    auth((ctx) => {
+      removeLogo();
+      redirect(ctx.res, '/admin/settings?ok=logo_removed');
     }),
   );
 

@@ -100,16 +100,54 @@ export function diagnose(monitors, canaries) {
   };
 }
 
-function dayState(d) {
-  const counted = d.up + d.degraded + d.down;
-  if (!counted) return d.maintenance ? 'maintenance' : 'nodata';
-  if (!d.down) return d.degraded ? 'degraded' : 'operational';
-  const ratio = (d.up + d.degraded) / counted;
-  return ratio >= 0.99 ? 'partial_outage' : 'major_outage';
+export const DISPLAY_DEFAULTS = Object.freeze({
+  historyDays: 90,
+  orangeBelow: 100,
+  redBelow: 99,
+  slowCountsAsUp: true,
+  showUptime: true,
+  showResponseTime: true,
+  showLastChecked: true,
+  showDescriptions: true,
+});
+
+/** Admin-configurable display options (Settings -> Display). */
+export function displaySettings() {
+  const num = (key, def) => {
+    const v = Number(getSetting(key, ''));
+    return getSetting(key) === null || !Number.isFinite(v) ? def : v;
+  };
+  const flag = (key, def) => {
+    const v = getSetting(key);
+    return v === null ? def : v === '1';
+  };
+  const d = DISPLAY_DEFAULTS;
+  const historyDays = num('history_days', d.historyDays);
+  return {
+    historyDays: [30, 60, 90].includes(historyDays) ? historyDays : d.historyDays,
+    orangeBelow: num('orange_below', d.orangeBelow),
+    redBelow: num('red_below', d.redBelow),
+    slowCountsAsUp: flag('slow_counts_as_up', d.slowCountsAsUp),
+    showUptime: flag('show_uptime', d.showUptime),
+    showResponseTime: flag('show_response_time', d.showResponseTime),
+    showLastChecked: flag('show_last_checked', d.showLastChecked),
+    showDescriptions: flag('show_descriptions', d.showDescriptions),
+  };
 }
 
-/** Per-day history and 90-day uptime for a set of monitors. */
-export function componentHistory(monitorIds, days = HISTORY_DAYS, now = Date.now()) {
+const okCount = (r, opts) => r.up + (opts.slowCountsAsUp ? r.degraded : 0);
+
+function dayState(d, opts) {
+  const counted = d.up + d.degraded + d.down;
+  if (!counted) return d.maintenance ? 'maintenance' : 'nodata';
+  const pct = (okCount(d, opts) / counted) * 100;
+  if (pct < opts.redBelow) return 'major_outage';
+  if (pct < opts.orangeBelow) return 'partial_outage';
+  return d.degraded ? 'degraded' : 'operational';
+}
+
+/** Per-day history and uptime over the period for a set of monitors. */
+export function componentHistory(monitorIds, days = HISTORY_DAYS, now = Date.now(), opts = displaySettings()) {
   const dayList = lastDays(days, now);
   if (!monitorIds.length) {
     return { days: dayList.map((day) => ({ day, state: 'nodata' })), uptime: null };
@@ -127,7 +165,7 @@ export function componentHistory(monitorIds, days = HISTORY_DAYS, now = Date.now
     if (!byDay.has(r.day)) byDay.set(r.day, []);
     byDay.get(r.day).push(r);
     const t = perMonitor.get(r.monitor_id) || { ok: 0, total: 0 };
-    t.ok += r.up + r.degraded;
+    t.ok += okCount(r, opts);
     t.total += r.up + r.degraded + r.down;
     perMonitor.set(r.monitor_id, t);
   }
@@ -146,10 +184,10 @@ export function componentHistory(monitorIds, days = HISTORY_DAYS, now = Date.now
       checks += counted;
       down += r.down;
       if (!counted) continue;
-      const ratio = (r.up + r.degraded) / counted;
+      const ratio = okCount(r, opts) / counted;
       if (!worst || ratio < worst.ratio || (ratio === worst.ratio && r.degraded > worst.r.degraded)) worst = { ratio, r };
     }
-    const state = worst ? dayState(worst.r) : maintenance ? 'maintenance' : 'nodata';
+    const state = worst ? dayState(worst.r, opts) : maintenance ? 'maintenance' : 'nodata';
     return {
       day,
       state,
@@ -205,9 +243,10 @@ export function publicStatus(now = Date.now()) {
   const monitors = all('SELECT * FROM monitors');
   const maint = maintenanceComponentIds(now);
   const active = activeIncidentsWithComponents();
+  const opts = displaySettings();
 
   // Incidents per day (for history tooltips), limited to the visible window.
-  const since = now - (HISTORY_DAYS + 1) * DAY_MS;
+  const since = now - (opts.historyDays + 1) * DAY_MS;
   const recentIncidents = all(
     `SELECT i.id, i.title, i.impact, i.created_at, i.resolved_at, ic.component_id
      FROM incidents i JOIN incident_components ic ON ic.incident_id = i.id
@@ -224,8 +263,9 @@ export function publicStatus(now = Date.now()) {
       if (inc.component_ids.includes(c.id)) state = worse(state === 'unknown' ? null : state, IMPACT_TO_STATE[inc.impact]) || state;
     }
     const nonCanary = ms.filter((m) => m.scope !== 'canary');
-    const history = componentHistory(nonCanary.map((m) => m.id), HISTORY_DAYS, now);
+    const history = componentHistory(nonCanary.map((m) => m.id), opts.historyDays, now, opts);
 
+    if (!opts.showUptime) for (const d of history.days) d.uptime = null;
     const incs = recentIncidents.filter((i) => i.component_id === c.id);
     for (const d of history.days) {
       const dayIncs = incs.filter((i) => {
@@ -240,14 +280,15 @@ export function publicStatus(now = Date.now()) {
     return {
       id: c.id,
       name: c.name,
-      description: c.description,
+      description: opts.showDescriptions ? c.description : '',
+      group: c.group_name || null,
       state,
       stateLabel: COMPONENT_STATES[state].label,
-      uptime: history.uptime,
-      uptimeLabel: formatUptime(history.uptime),
+      uptime: opts.showUptime ? history.uptime : null,
+      uptimeLabel: opts.showUptime ? formatUptime(history.uptime) : null,
       days: history.days,
-      responseMs: primary ? primary.last_response_ms : null,
-      lastCheckAt: nonCanary.reduce((acc, m) => Math.max(acc, m.last_check_at || 0), 0) || null,
+      responseMs: opts.showResponseTime && primary ? primary.last_response_ms : null,
+      lastCheckAt: opts.showLastChecked ? nonCanary.reduce((acc, m) => Math.max(acc, m.last_check_at || 0), 0) || null : null,
     };
   });
 
@@ -286,6 +327,7 @@ export function publicStatus(now = Date.now()) {
     activeIncidents,
     maintenances,
     generatedAt: now,
+    display: opts,
   };
 }
 
@@ -317,5 +359,5 @@ export function monitorUptime(monitorId, sinceDays, now = Date.now()) {
     fromDay,
   );
   const total = (r.up || 0) + (r.degraded || 0) + (r.down || 0);
-  return total ? ((r.up || 0) + (r.degraded || 0)) / total : null;
+  return total ? okCount({ up: r.up || 0, degraded: r.degraded || 0 }, displaySettings()) / total : null;
 }

@@ -296,6 +296,111 @@ test('down transition delivers a Discord webhook, then recovery', async () => {
   await req('POST', `/admin/monitors/${id}/delete`, { _csrf: token });
 });
 
+test('atom feed lists incidents and maintenance', async () => {
+  const r = await req('GET', '/feed.xml');
+  assert.equal(r.status, 200);
+  assert.match(r.headers.get('content-type'), /application\/atom\+xml/);
+  assert.match(r.text, /<feed xmlns="http:\/\/www.w3.org\/2005\/Atom">/);
+  assert.match(r.text, /\[Resolved\] Files slow/);
+  assert.match(r.text, /Maintenance: Disk upgrade/);
+  // incident text is escaped twice over: once for HTML, once for XML
+  assert.doesNotMatch(r.text, /<script>/);
+  const page = await req('GET', '/');
+  assert.match(page.text, /rel="alternate" type="application\/atom\+xml"/);
+});
+
+test('component groups render as collapsible sections', async () => {
+  const token = await csrf('/admin/components');
+  const c = await req('POST', '/admin/components', { _csrf: token, name: 'Notes', group_name: 'Home apps', sort_order: '20', visible: '1' });
+  assert.equal(c.status, 303);
+  const page = await req('GET', '/');
+  assert.match(page.text, /<details class="group state-[a-z_]+" data-group="Home apps" open>/);
+  const api = JSON.parse((await req('GET', '/api/v1/status')).text);
+  assert.equal(api.components.find((x) => x.name === 'Notes').group, 'Home apps');
+  assert.equal(api.components.find((x) => x.name === 'Files').group, null);
+  assert.match(page.text, /data-live="30"/);
+});
+
+function multipart(fields, file) {
+  const boundary = '----signalposttest' + Math.random().toString(16).slice(2);
+  const parts = [];
+  for (const [k, v] of Object.entries(fields)) {
+    parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${k}"\r\n\r\n${v}\r\n`));
+  }
+  parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="logo"; filename="${file.name}"\r\nContent-Type: ${file.type}\r\n\r\n`));
+  parts.push(file.data, Buffer.from(`\r\n--${boundary}--\r\n`));
+  return { body: Buffer.concat(parts), type: `multipart/form-data; boundary=${boundary}` };
+}
+
+async function uploadLogo(file) {
+  const token = await csrf('/admin/settings');
+  const { body, type } = multipart({ _csrf: token }, file);
+  const res = await fetch(`${BASE}/admin/branding/logo`, { method: 'POST', redirect: 'manual', headers: { Cookie: cookie, 'Content-Type': type }, body });
+  return res.status;
+}
+
+test('logo upload, serving and removal', async () => {
+  const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from('fake png body \r\n with crlf')]);
+  assert.equal(await uploadLogo({ name: 'logo.png', type: 'image/png', data: png }), 303);
+  const page = await req('GET', '/');
+  const v = /src="\/logo\?v=([0-9a-f]+)"/.exec(page.text);
+  assert.ok(v, 'public page uses the uploaded logo');
+  const logo = await fetch(`${BASE}/logo?v=${v[1]}`);
+  assert.equal(logo.headers.get('content-type'), 'image/png');
+  assert.ok(Buffer.from(await logo.arrayBuffer()).equals(png), 'logo bytes round-trip exactly');
+
+  assert.equal(await uploadLogo({ name: 'x.txt', type: 'image/png', data: Buffer.from('not an image') }), 422);
+
+  const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
+  assert.equal(await uploadLogo({ name: 'logo.svg', type: 'image/svg+xml', data: svg }), 303);
+  const svgRes = await fetch(`${BASE}/logo`);
+  assert.equal(svgRes.headers.get('content-type'), 'image/svg+xml');
+  assert.match(svgRes.headers.get('content-security-policy'), /sandbox/);
+
+  const token = await csrf('/admin/settings');
+  await req('POST', '/admin/branding/logo/delete', { _csrf: token });
+  assert.equal((await fetch(`${BASE}/logo`)).status, 404);
+});
+
+test('footer links are validated and shown', async () => {
+  const token = await csrf('/admin/settings');
+  const bad = await req('POST', '/admin/settings', { _csrf: token, site_name: 'Status', heading: 'Services', footer_links: 'Home | javascript:alert(1)' });
+  assert.equal(bad.status, 422);
+  const ok = await req('POST', '/admin/settings', { _csrf: token, site_name: 'Status', heading: 'Services', footer_links: 'Home | https://example.com\nContact | https://example.com/contact' });
+  assert.equal(ok.status, 303);
+  const page = await req('GET', '/');
+  assert.match(page.text, /<a href="https:\/\/example.com\/contact" rel="noopener">Contact<\/a>/);
+});
+
+test('display settings change the public page', async () => {
+  const token = await csrf('/admin/settings');
+  const bad = await req('POST', '/admin/settings/display', { _csrf: token, history_days: '90', orange_below: '95', red_below: '99' });
+  assert.equal(bad.status, 422, 'red threshold above orange is rejected');
+
+  const ok = await req('POST', '/admin/settings/display', {
+    _csrf: token, history_days: '30', orange_below: '100', red_below: '50', slow_counts_as_up: '1', show_uptime: '1', show_descriptions: '1',
+  });
+  assert.equal(ok.status, 303);
+  const api = JSON.parse((await req('GET', '/api/v1/status')).text);
+  assert.equal(api.page.history_days, 30);
+  const files = api.components.find((x) => x.name === 'Files');
+  assert.equal(files.history.length, 30);
+  assert.equal(files.response_ms, null, 'response time hidden');
+  assert.equal(files.last_checked_at, null, 'last checked hidden');
+  // Files' only public monitor has been down all day: below 50% -> red
+  assert.equal(files.history.at(-1).status, 'major_outage');
+
+  const page = await req('GET', '/');
+  assert.doesNotMatch(page.text, /checked \d/);
+  assert.match(page.text, /30 days ago/);
+
+  // back to defaults so other tests aren't affected
+  await req('POST', '/admin/settings/display', {
+    _csrf: token, history_days: '90', orange_below: '100', red_below: '99',
+    slow_counts_as_up: '1', show_uptime: '1', show_response_time: '1', show_last_checked: '1', show_descriptions: '1',
+  });
+});
+
 test('backup download returns a SQLite file', async () => {
   const token = await csrf('/admin/settings');
   const res = await fetch(`${BASE}/admin/backup`, {

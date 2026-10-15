@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.0
+
+- Atom/RSS feed of incidents and maintenance at `/feed.xml`
+- Component groups: give components a group name and they're shown together in a collapsible section
+- Upload your own logo (also used as favicon) and add footer links in Settings
+- Display settings: 30/60/90 days of history, your own orange/red thresholds, whether slow responses count as up, and which details are shown publicly
+- The status page updates itself every 30 seconds without reloading, and pauses in background tabs
+- API: new `uptime_percent` and `page.history_days`; `uptime_90d` is deprecated
+
 ## 1.1.0
 
 - Admin area works properly on phones: compact header with scrollable tabs, monitor lists as two-line rows, other tables collapse into cards
