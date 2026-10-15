@@ -72,7 +72,7 @@ ${body}
   <a href="/history">Incident history</a>
   <a href="/feed.xml">RSS</a>
   ${links.map((l) => html`<a href="${l.url}" rel="noopener">${l.label}</a>`)}
-  <span class="footer-right">Powered by Signalpost</span>
+  <span class="footer-right">Powered by <a href="https://github.com/VikkarDev/Signalpost" rel="noopener">Signalpost</a></span>
 </footer>
 <div class="tooltip" id="tooltip" role="tooltip" hidden></div>
 </body>
