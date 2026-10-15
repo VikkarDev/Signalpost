@@ -1,0 +1,67 @@
+# Signalpost - see README.md for setup (plain Docker, Synology Container Manager, Cloudflare Tunnel).
+# Change ADMIN_PASSWORD and PUBLIC_URL before the first start.
+
+name: signalpost
+
+services:
+  signalpost:
+    build:
+      context: .
+    image: signalpost:1.0.0
+    container_name: signalpost
+    restart: unless-stopped
+    init: true
+
+    environment:
+      # Only used to create the first admin account. Min. 12 characters.
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: CHANGE_ME_to_a_long_random_password
+      # ADMIN_RESET_PASSWORD: "true"   # set once to reset a forgotten password, then remove
+
+      PUBLIC_URL: https://status.example.com
+      TZ: UTC                           # e.g. Europe/Stockholm, America/New_York
+      LOG_LEVEL: info
+
+      # Email alerts (optional). Leave SMTP_HOST empty to disable.
+      SMTP_HOST: ""
+      SMTP_PORT: "587"
+      SMTP_SECURE: "false"              # "true" for port 465
+      SMTP_USER: ""
+      SMTP_PASSWORD: ""
+      SMTP_FROM: ""                     # e.g. "Status <status@example.com>"
+
+    volumes:
+      - signalpost-data:/data
+
+    ports:
+      - "3000:3000"
+
+    # If you use Cloudflare Tunnel (or another reverse proxy container), you can drop
+    # the ports block above and put the app on the proxy's network instead:
+    # networks:
+    #   - proxy
+
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    sysctls:
+      net.ipv4.ping_group_range: "0 2147483647"   # ping without root / NET_RAW
+    mem_limit: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  signalpost-data:
+    name: signalpost-data
+
+# networks:
+#   proxy:
+#     name: your-existing-network   # e.g. the network your cloudflared container is on
+#     external: true

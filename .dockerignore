@@ -1,0 +1,12 @@
+node_modules
+.localdata
+.git
+test
+*.png
+*.md
+!README.md
+.env
+.env.*
+docker-compose*.yml
+docs
+.github
