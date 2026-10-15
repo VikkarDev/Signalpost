@@ -174,13 +174,13 @@ export async function notifyMonitorTransition(rec) {
     const msg = {
       kind: event,
       title:
-        event === 'down' ? `🔴 ${m.name} is DOWN` : event === 'recovery' ? `🟢 ${m.name} has recovered` : `🟡 ${m.name} is degraded`,
+        event === 'down' ? `${m.name} is down` : event === 'recovery' ? `${m.name} is back up` : `${m.name} is slow`,
       text:
         event === 'down'
           ? `${m.last_error || 'Check failed'}${diag ? `\n\n${diag.text}` : ''}`
           : event === 'recovery'
-            ? `Back to normal${downtime ? ` after ${formatDuration(downtime)}` : ''}.`
-            : `Response time ${m.last_response_ms} ms exceeds the ${m.degraded_ms} ms threshold.`,
+            ? downtime ? `Was down for ${formatDuration(downtime)}.` : 'Back to normal.'
+            : `Responded in ${m.last_response_ms} ms (limit ${m.degraded_ms} ms).`,
       fields: [...monitorFields(m), { name: 'Time', value: formatDateTime(Date.now()) }],
       url: adminUrl,
     };
@@ -204,7 +204,7 @@ export async function notifyMonitorTransition(rec) {
         r,
         {
           kind: 'down',
-          title: `🔴 ${m.name} is still DOWN`,
+          title: `${m.name} is still down`,
           text: `Down for ${formatDuration(now - (m.state_since || now))}. Last error: ${m.last_error || 'unknown'}`,
           fields: monitorFields(m),
           url: adminUrl,
@@ -226,7 +226,7 @@ export async function notifyTlsExpiry(m, expiresAt) {
       r,
       {
         kind: 'degraded',
-        title: `🔐 TLS certificate for ${m.name} ${days < 0 ? 'has expired' : `expires in ${days} day(s)`}`,
+        title: `TLS certificate for ${m.name} ${days < 0 ? 'has expired' : days === 1 ? 'expires tomorrow' : `expires in ${days} days`}`,
         text: `Certificate expiry: ${formatDateTime(expiresAt)}`,
         fields: monitorFields(m),
         url: `${config.publicUrl}/admin/monitors/${m.id}`,

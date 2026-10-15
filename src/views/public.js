@@ -100,28 +100,23 @@ export function statusPage(data, past) {
     ${data.components.length
       ? html`<div class="components">${data.components.map(componentCell)}</div>`
       : html`<div class="empty">No services have been added yet.</div>`}
-    <p class="legend-key muted small">
-      <span class="key key-operational"></span> Operational
-      <span class="key key-degraded"></span> Degraded
-      <span class="key key-partial_outage"></span> Partial outage
-      <span class="key key-major_outage"></span> Major outage
-      <span class="key key-maintenance"></span> Maintenance
-      <span class="key key-nodata"></span> No data
-    </p>
   </section>
 
   <section class="section" aria-labelledby="past">
     <h2 id="past" class="section-title">Past Incidents</h2>
-    ${pastDays.map((day) => {
-      const items = past.filter((i) => dayKey(i.created_at) === day);
-      return html`<div class="past-day">
-        <h3 class="past-day-title">${formatDay(day)}</h3>
-        ${items.length ? items.map((i) => incidentBlock(i)) : html`<p class="muted">No incidents reported.</p>`}
-      </div>`;
-    })}
-    <p><a href="/history">← Incident history</a></p>
+    ${past.length
+      ? pastDays.map((day) => {
+          const items = past.filter((i) => dayKey(i.created_at) === day);
+          return items.length
+            ? html`<div class="past-day">
+                <h3 class="past-day-title">${formatDay(day)}</h3>
+                ${items.map((i) => incidentBlock(i))}
+              </div>`
+            : '';
+        })
+      : html`<p class="muted">No incidents in the past 7 days.</p>`}
   </section>
-  <p class="muted small updated">Last updated ${formatDateTime(data.generatedAt)} · refreshes automatically</p>`;
+  <p class="muted small updated">Updated ${formatDateTime(data.generatedAt)}</p>`;
 
   return publicLayout({
     title: `${data.siteName}`,

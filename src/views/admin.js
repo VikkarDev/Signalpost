@@ -1,5 +1,5 @@
 import { html, multiline } from '../lib/html.js';
-import { formatDateTime, relativeTime, tsToLocalInput, formatDuration, formatDay } from '../lib/time.js';
+import { formatDateTime, formatTime, relativeTime, tsToLocalInput, formatDuration, formatDay } from '../lib/time.js';
 import { formatUptime, COMPONENT_STATES, INCIDENT_STATUSES, INCIDENT_IMPACTS } from '../status.js';
 import { adminLayout, VERSION } from './layout.js';
 import { config } from '../config.js';
@@ -85,17 +85,17 @@ export function loginPage({ error, adminMissing, username = '' }) {
 
 export function dashboardPage(ctx, { components, unassigned, canaries, totals }) {
   const monitorRow = (m) => html`<tr class="${m.enabled ? '' : 'disabled'}">
-    <td><a href="/admin/monitors/${m.id}">${m.name}</a>${m.enabled ? '' : html` <span class="pill">disabled</span>`}</td>
-    <td>${SCOPE_LABEL[m.scope]} · ${m.type.toUpperCase()}</td>
-    <td>${m.enabled ? stateBadge(m.state) : html`<span class="badge">Off</span>`}</td>
-    <td class="num">${m.last_response_ms != null ? `${m.last_response_ms} ms` : '—'}</td>
-    <td>${relativeTime(m.last_check_at)}</td>
-    <td class="num">${pct(m.uptime24h)}</td>
-    <td class="num">${pct(m.uptime30d)}</td>
-    <td class="err">${m.state === 'down' || m.state === 'degraded' ? m.last_error : ''}</td>
+    <td class="c-name"><a href="/admin/monitors/${m.id}">${m.name}</a>${m.enabled ? '' : html` <span class="pill">disabled</span>`}</td>
+    <td class="c-meta">${SCOPE_LABEL[m.scope]} ${m.type.toUpperCase()}</td>
+    <td class="c-state">${m.enabled ? stateBadge(m.state) : html`<span class="badge">Off</span>`}</td>
+    <td class="num c-meta">${m.last_response_ms != null ? `${m.last_response_ms} ms` : ''}</td>
+    <td class="c-meta">${m.last_check_at ? relativeTime(m.last_check_at) : ''}</td>
+    <td class="num c-meta c-labelled">${pct(m.uptime24h)}</td>
+    <td class="num c-hide">${pct(m.uptime30d)}</td>
+    <td class="err c-full">${m.state === 'down' || m.state === 'degraded' ? m.last_error : ''}</td>
   </tr>`;
-  const table = (rows) => html`<div class="table-wrap"><table class="table">
-    <thead><tr><th>Monitor</th><th>Kind</th><th>State</th><th class="num">Response</th><th>Checked</th><th class="num">24 h</th><th class="num">30 d</th><th>Last error</th></tr></thead>
+  const table = (rows) => html`<div class="table-wrap"><table class="table compact dash">
+    <thead><tr><th>Monitor</th><th>Kind</th><th>State</th><th class="num">Response</th><th>Checked</th><th class="num">24h</th><th class="num">30d</th><th>Last error</th></tr></thead>
     <tbody>${rows.map(monitorRow)}</tbody></table></div>`;
 
   return adminLayout({
@@ -107,18 +107,20 @@ export function dashboardPage(ctx, { components, unassigned, canaries, totals })
       <h1>Dashboard</h1>
       <div class="actions"><a class="btn btn-primary" href="/admin/monitors/new">New monitor</a></div>
     </div>
-    <div class="stats">
-      <div class="stat"><span>${totals.monitors}</span>monitors</div>
-      <div class="stat stat-up"><span>${totals.up}</span>up</div>
-      <div class="stat stat-degraded"><span>${totals.degraded}</span>degraded</div>
-      <div class="stat stat-down"><span>${totals.down}</span>down</div>
-      <div class="stat"><span>${totals.unknown}</span>pending</div>
-    </div>
+    ${totals.monitors
+      ? html`<p class="summary">
+          ${totals.down ? html`<span class="sum sum-down">${totals.down} down</span>` : ''}
+          ${totals.degraded ? html`<span class="sum sum-degraded">${totals.degraded} slow</span>` : ''}
+          <span class="sum sum-up">${totals.up} up</span>
+          ${totals.unknown ? html`<span class="sum">${totals.unknown} pending</span>` : ''}
+          <span class="muted">of ${totals.monitors} monitors</span>
+        </p>`
+      : ''}
     ${totals.monitors === 0
       ? html`<div class="card"><h2>Getting started</h2><ol>
           <li><a href="/admin/components/new">Create a component</a> for each service shown publicly (e.g. "Website").</li>
           <li><a href="/admin/monitors/new">Add monitors</a>: an <strong>internal</strong> check (e.g. <code>http://container-name:port</code>) and a <strong>public</strong> check (e.g. <code>https://app.example.com</code>) for each component.</li>
-          <li>Add one or two <strong>canary</strong> monitors (e.g. <code>https://1.1.1.1</code>) so internet outages at the NAS can be told apart from Cloudflare problems.</li>
+          <li>Add a <strong>canary</strong> or two (e.g. <code>https://1.1.1.1</code>). If those fail too, it's your internet connection and not your proxy.</li>
           <li><a href="/admin/alerts/new">Add an alert rule</a> for Discord or email.</li></ol></div>`
       : ''}
     ${components.map(
@@ -132,13 +134,13 @@ export function dashboardPage(ctx, { components, unassigned, canaries, totals })
       </section>`,
     )}
     ${canaries.length
-      ? html`<section class="card"><div class="card-head"><h2>Connectivity canaries</h2></div>
-          <p class="muted small">External sites that should always be up. If all canaries fail, public-URL failures are attributed to the NAS's internet connection.</p>
+      ? html`<section class="card"><div class="card-head"><h2>Canaries</h2></div>
+          <p class="muted small">Sites that should always be up. When all of them fail, the server itself is offline.</p>
           ${table(canaries)}</section>`
       : ''}
     ${unassigned.length
       ? html`<section class="card"><div class="card-head"><h2>Monitors without a component</h2></div>
-          <p class="muted small">Not shown on the public page.</p>${table(unassigned)}</section>`
+          <p class="muted small">Only visible here.</p>${table(unassigned)}</section>`
       : ''}`,
   });
 }
@@ -153,17 +155,17 @@ export function monitorsPage(ctx, monitors) {
     body: html`
     <div class="page-head"><h1>Monitors</h1><div class="actions"><a class="btn btn-primary" href="/admin/monitors/new">New monitor</a></div></div>
     ${monitors.length
-      ? html`<div class="table-wrap"><table class="table">
+      ? html`<div class="table-wrap"><table class="table compact">
       <thead><tr><th>Name</th><th>Component</th><th>Kind</th><th>Target</th><th>Every</th><th>State</th><th></th></tr></thead>
       <tbody>${monitors.map(
         (m) => html`<tr class="${m.enabled ? '' : 'disabled'}">
-          <td><a href="/admin/monitors/${m.id}">${m.name}</a></td>
-          <td>${m.component_name || html`<span class="muted">—</span>`}</td>
-          <td>${SCOPE_LABEL[m.scope]} · ${m.type.toUpperCase()}</td>
-          <td class="mono">${m.type === 'tcp' ? `${m.target}:${m.port}` : m.target}</td>
-          <td>${formatDuration(m.interval_s * 1000)}</td>
-          <td>${m.enabled ? stateBadge(m.state) : html`<span class="badge">Off</span>`}</td>
-          <td class="row-actions">
+          <td class="c-name"><a href="/admin/monitors/${m.id}">${m.name}</a></td>
+          <td class="${m.component_name ? 'c-meta' : 'c-hide'}">${m.component_name || ''}</td>
+          <td class="c-meta">${SCOPE_LABEL[m.scope]} ${m.type.toUpperCase()}</td>
+          <td class="mono c-full">${m.type === 'tcp' ? `${m.target}:${m.port}` : m.target}</td>
+          <td class="c-meta c-labelled">${formatDuration(m.interval_s * 1000)}</td>
+          <td class="c-state">${m.enabled ? stateBadge(m.state) : html`<span class="badge">Off</span>`}</td>
+          <td class="row-actions c-hide">
             <a href="/admin/monitors/${m.id}/edit">Edit</a>
             ${postButton({ action: `/admin/monitors/${m.id}/toggle`, csrf: ctx.csrf, label: m.enabled ? 'Disable' : 'Enable', cls: 'link-button' })}
           </td>
@@ -185,18 +187,18 @@ export function monitorFormPage(ctx, { monitor, components, errorList, isNew }) 
     ${errors(errorList)}
     <form method="post" action="${action}" class="card form-grid" id="monitor-form">
       ${csrfField(ctx.csrf)}
-      ${field('Name', input('name', m.name, { required: true, maxlength: 100 }), 'Shown in the admin area and alerts.')}
-      ${field('Component', select('component_id', [['', 'None (admin only)'], ...components.map((c) => [c.id, c.name])], m.component_id), 'The public service this check belongs to.')}
+      ${field('Name', input('name', m.name, { required: true, maxlength: 100 }))}
+      ${field('Component', select('component_id', [['', 'None (admin only)'], ...components.map((c) => [c.id, c.name])], m.component_id))}
       ${field('Check type', select('type', [['http', 'HTTP / HTTPS'], ['tcp', 'TCP port'], ['ping', 'Ping (ICMP)']], m.type, { id: 'type-select' }))}
       ${field(
         'Scope',
         select('scope', [['public', 'Public (through the internet / your proxy)'], ['internal', 'Internal (directly to the container or LAN host)'], ['canary', 'Canary (internet connectivity reference)']], m.scope),
-        'Use both an internal and a public monitor per service so failures can be pinpointed.',
+        'Tip: add both an internal and a public monitor per service.',
       )}
       ${field(
         'Target',
         input('target', m.target, { required: true, maxlength: 2000, placeholder: 'https://app.example.com  or  my-container  or  192.168.1.10', spellcheck: 'false' }),
-        'HTTP: full URL (http:// or https://). TCP/Ping: host name or IP. Containers on cloudflare_mesh can be reached by container name.',
+        'HTTP: full URL. TCP and ping: host name or IP. Containers on the same Docker network can be reached by name.',
       )}
       ${field('Port', input('port', m.port, { type: 'number', min: 1, max: 65535 }), 'TCP checks only.', 'f-port')}
       ${field('HTTP method', select('method', [['GET', 'GET'], ['HEAD', 'HEAD']], m.method), '', 'f-method')}
@@ -237,17 +239,17 @@ export function monitorDetailPage(ctx, { monitor: m, component, checks, uptime, 
     <div class="card">
       <dl class="facts">
         <dt>Target</dt><dd class="mono">${m.type === 'tcp' ? `${m.target}:${m.port}` : m.target}</dd>
-        <dt>Kind</dt><dd>${SCOPE_LABEL[m.scope]} · ${m.type.toUpperCase()} every ${formatDuration(m.interval_s * 1000)}, timeout ${m.timeout_ms} ms</dd>
+        <dt>Check</dt><dd>${SCOPE_LABEL[m.scope]} ${m.type.toUpperCase()}, every ${formatDuration(m.interval_s * 1000)}, ${m.timeout_ms / 1000}s timeout</dd>
         <dt>Component</dt><dd>${component ? html`<a href="/admin/components/${component.id}">${component.name}</a>` : '—'}</dd>
         <dt>State since</dt><dd>${m.state_since ? html`${formatDateTime(m.state_since)} (${relativeTime(m.state_since)})` : '—'}</dd>
-        <dt>Last check</dt><dd>${m.last_check_at ? html`${formatDateTime(m.last_check_at)} · ${m.last_response_ms ?? '—'} ms${m.last_status_code ? ` · HTTP ${m.last_status_code}` : ''}` : 'never'}</dd>
+        <dt>Last check</dt><dd>${m.last_check_at ? html`${relativeTime(m.last_check_at)}${m.last_response_ms != null ? `, ${m.last_response_ms} ms` : ''}${m.last_status_code ? `, HTTP ${m.last_status_code}` : ''}` : 'never'}</dd>
         ${m.last_error ? html`<dt>Last error</dt><dd class="err">${m.last_error}</dd>` : ''}
         ${m.tls_expires_at ? html`<dt>TLS certificate</dt><dd>expires ${formatDateTime(m.tls_expires_at)}</dd>` : ''}
-        <dt>Uptime</dt><dd>24 h: ${pct(uptime.d1)} · 7 d: ${pct(uptime.d7)} · 30 d: ${pct(uptime.d30)} · 90 d: ${pct(uptime.d90)}</dd>
+        <dt>Uptime</dt><dd class="uptimes"><span>24h ${pct(uptime.d1)}</span><span>7d ${pct(uptime.d7)}</span><span>30d ${pct(uptime.d30)}</span><span>90d ${pct(uptime.d90)}</span></dd>
       </dl>
     </div>
     <div class="card">
-      <h2>Last 90 days</h2>
+      <h2>90 days</h2>
       <div class="bars bars-admin">${history.days.map(
         (d) => html`<span class="bar bar-${d.state}" data-tip="${formatDay(d.day)}\n${d.uptime != null ? `${formatUptime(d.uptime)} uptime · ${d.checks} checks · ${d.down} failed` : 'No data'}"></span>`,
       )}</div>
@@ -255,11 +257,11 @@ export function monitorDetailPage(ctx, { monitor: m, component, checks, uptime, 
     <div class="card">
       <h2>Recent checks</h2>
       ${checks.length
-        ? html`<div class="table-wrap"><table class="table">
+        ? html`<div class="table-wrap"><table class="table compact">
         <thead><tr><th>Time</th><th>Result</th><th class="num">Response</th><th>HTTP</th><th>Error</th></tr></thead>
         <tbody>${checks.map(
-          (c) => html`<tr><td>${formatDateTime(c.checked_at)}</td><td>${stateBadge(c.status)}${c.in_maintenance ? html` <span class="pill">maint.</span>` : ''}</td>
-          <td class="num">${c.response_ms != null ? `${c.response_ms} ms` : '—'}</td><td>${c.status_code ?? ''}</td><td class="err">${c.error || ''}</td></tr>`,
+          (c) => html`<tr><td class="c-name">${formatTime(c.checked_at)}</td><td class="c-state">${stateBadge(c.status)}${c.in_maintenance ? html` <span class="pill">maint.</span>` : ''}</td>
+          <td class="num c-meta">${c.response_ms != null ? `${c.response_ms} ms` : ''}</td><td class="c-meta">${c.status_code ? `HTTP ${c.status_code}` : ''}</td><td class="err c-full">${c.error || ''}</td></tr>`,
         )}</tbody></table></div>`
         : html`<p class="muted">No checks recorded yet.</p>`}
     </div>`,
@@ -406,7 +408,7 @@ export function incidentDetailPage(ctx, { incident: i, updates, components, sele
     <div class="card">
       <h2>Timeline</h2>
       ${updates.map(
-        (u) => html`<div class="incident-update"><p><strong>${u.status}</strong> - ${multiline(u.message)}</p>
+        (u) => html`<div class="incident-update"><p><strong>${u.status[0].toUpperCase() + u.status.slice(1)}</strong> - ${multiline(u.message)}</p>
           <p class="muted small">${formatDateTime(u.created_at)}
           ${postButton({ action: `/admin/incidents/${i.id}/updates/${u.id}/delete`, csrf: ctx.csrf, label: 'delete', cls: 'link-button small', confirm: 'Delete this update?' })}</p></div>`,
       )}

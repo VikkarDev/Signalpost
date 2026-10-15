@@ -1,4 +1,4 @@
-// Admin UI helpers: confirmation prompts, monitor-type dependent fields, and bar tooltips.
+// Admin page helpers.
 (function () {
   'use strict';
 
@@ -26,7 +26,22 @@
     sync();
   }
 
-  // Simple native tooltips for admin history bars.
+  // Column names as data-label, so tables can collapse into cards on small screens (see style.css).
+  Array.prototype.forEach.call(document.querySelectorAll('table.table'), function (table) {
+    if (!table.tHead) return;
+    var names = Array.prototype.map.call(table.tHead.rows[0].cells, function (th) {
+      return th.textContent.trim();
+    });
+    Array.prototype.forEach.call(table.tBodies, function (body) {
+      Array.prototype.forEach.call(body.rows, function (row) {
+        Array.prototype.forEach.call(row.cells, function (td, i) {
+          if (names[i]) td.setAttribute('data-label', names[i]);
+        });
+      });
+    });
+  });
+
+  // Native tooltips for admin history bars.
   Array.prototype.forEach.call(document.querySelectorAll('.bars-admin [data-tip]'), function (el) {
     el.title = el.getAttribute('data-tip');
   });

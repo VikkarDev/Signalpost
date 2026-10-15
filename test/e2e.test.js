@@ -287,12 +287,12 @@ test('down transition delivers a Discord webhook, then recovery', async () => {
   targetStatus = 200;
   assert.ok(discordHits.length >= 1, 'webhook received');
   const embed = discordHits[0].embeds[0];
-  assert.match(embed.title, /flaky is DOWN/);
+  assert.match(embed.title, /flaky is down/);
   assert.match(embed.description, /Unexpected HTTP status 503/);
   discordHits = [];
   await req('POST', `/admin/monitors/${id}/check`, { _csrf: token });
   for (let i = 0; i < 20 && !discordHits.length; i++) await new Promise((r) => setTimeout(r, 100));
-  assert.match(discordHits[0].embeds[0].title, /recovered/);
+  assert.match(discordHits[0].embeds[0].title, /back up/);
   await req('POST', `/admin/monitors/${id}/delete`, { _csrf: token });
 });
 

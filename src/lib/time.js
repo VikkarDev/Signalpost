@@ -69,6 +69,20 @@ export function tsToLocalInput(ts, tz = config.timezone) {
   return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
 }
 
+const timeFmt = new Map();
+/** Short form for tables: "17:29" today, otherwise "14 Oct 17:29". */
+export function formatTime(ts, tz = config.timezone, now = Date.now()) {
+  let f = timeFmt.get(tz);
+  if (!f) {
+    f = {
+      time: new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      date: new Intl.DateTimeFormat('en-GB', { timeZone: tz, day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }),
+    };
+    timeFmt.set(tz, f);
+  }
+  return dayKey(ts, tz) === dayKey(now, tz) ? f.time.format(new Date(ts)) : f.date.format(new Date(ts));
+}
+
 const displayFmt = new Map();
 export function formatDateTime(ts, tz = config.timezone) {
   if (!ts) return '—';
@@ -117,8 +131,8 @@ export function formatDuration(ms) {
   const m = Math.floor(s / 60);
   if (m < 60) return `${m}m`;
   const h = Math.floor(m / 60);
-  if (h < 48) return `${h}h ${m % 60}m`;
-  return `${Math.floor(h / 24)}d ${h % 24}h`;
+  if (h < 48) return m % 60 ? `${h}h ${m % 60}m` : `${h}h`;
+  return h % 24 ? `${Math.floor(h / 24)}d ${h % 24}h` : `${Math.floor(h / 24)}d`;
 }
 
 export { DAY_MS };

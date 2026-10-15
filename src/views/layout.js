@@ -1,6 +1,6 @@
 import { html, raw } from '../lib/html.js';
 
-export const VERSION = '1.0.0';
+export const VERSION = '1.1.0';
 
 export const icons = {
   check: raw('<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 1 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/></svg>'),
@@ -101,19 +101,21 @@ export function adminLayout({ title, body, user, csrf, active, flash }) {
 <body class="admin">
 <header class="admin-bar">
   <div class="admin-container admin-bar-inner">
-    <a class="brand brand-small" href="/admin">${logo}<span>Signalpost</span><em>admin</em></a>
+    <a class="brand brand-small" href="/admin">${logo}<span>Signalpost</span></a>
+    <div class="admin-user">
+      ${user ? html`<a href="/" target="_blank" rel="noopener" class="hide-sm">View site</a>` : ''}
+      ${themeToggle}
+      ${user
+        ? html`<form method="post" action="/admin/logout" class="inline">
+            <input type="hidden" name="_csrf" value="${csrf}">
+            <button type="submit" class="link-button" title="Signed in as ${user.username}">Sign out</button>
+          </form>`
+        : ''}
+    </div>
     ${user
       ? html`<nav class="admin-nav" aria-label="Admin">
-          ${NAV.map(([key, href, label]) => html`<a href="${href}" class="${active === key ? 'active' : ''}">${label}</a>`)}
-        </nav>
-        <div class="admin-user">
-          ${themeToggle}
-          <a href="/" target="_blank" rel="noopener">View site ↗</a>
-          <form method="post" action="/admin/logout" class="inline">
-            <input type="hidden" name="_csrf" value="${csrf}">
-            <button type="submit" class="link-button">Sign out ${user.username}</button>
-          </form>
-        </div>`
+          ${NAV.map(([key, href, label]) => html`<a href="${href}"${active === key ? html` class="active" aria-current="page"` : ''}>${label}</a>`)}
+        </nav>`
       : ''}
   </div>
 </header>
