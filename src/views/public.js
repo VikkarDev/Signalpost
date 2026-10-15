@@ -55,8 +55,30 @@ function componentCell(c, display) {
   </div>`;
 }
 
+// Compact layout: one row per component.
+function componentRow(c, display) {
+  const problem = c.state !== 'operational' && c.state !== 'unknown';
+  return html`<div class="row state-${c.state}">
+    <span class="dot" title="${c.stateLabel}"></span>
+    <span class="row-name">
+      <span class="component-name">${c.name}</span>
+      ${c.description ? html`<span class="help" tabindex="0" data-tip="${c.description}" aria-label="${c.description}">?</span>` : ''}
+      ${problem ? html`<span class="row-state">${c.stateLabel}</span>` : ''}
+    </span>
+    ${bar(c)}
+    ${display.showUptime
+      ? html`<span class="row-uptime" title="Uptime over ${c.days.length} days">${c.uptimeLabel || 'No data'}</span>`
+      : ''}
+  </div>`;
+}
+
 // Ungrouped components and groups, in the order their first component appears.
 function componentSections(components, display) {
+  const list = display.layout === 'list';
+  const wrap = (items) =>
+    list
+      ? html`<div class="rows${display.showUptime ? '' : ' no-uptime'}">${items.map((c) => componentRow(c, display))}</div>`
+      : html`<div class="components">${items.map((c) => componentCell(c, display))}</div>`;
   const sections = [];
   const groups = new Map();
   for (const c of components) {
@@ -73,7 +95,7 @@ function componentSections(components, display) {
     }
   }
   return sections.map((s) => {
-    if (!s.name) return html`<div class="components">${s.items.map((c) => componentCell(c, display))}</div>`;
+    if (!s.name) return wrap(s.items);
     const known = s.items.filter((c) => c.state !== 'unknown');
     const state = known.length
       ? known.reduce((a, c) => (COMPONENT_STATES[c.state].rank > COMPONENT_STATES[a].rank ? c.state : a), 'operational')
@@ -82,9 +104,11 @@ function componentSections(components, display) {
       <summary class="group-head">
         <span class="group-name">${s.name}</span>
         <span class="muted small">${s.items.length === 1 ? '1 service' : `${s.items.length} services`}</span>
-        <span class="state-icon" title="${COMPONENT_STATES[state].label}">${stateIcon(state)}</span>
+        ${list
+          ? html`<span class="dot group-dot" title="${COMPONENT_STATES[state].label}"></span>`
+          : html`<span class="state-icon" title="${COMPONENT_STATES[state].label}">${stateIcon(state)}</span>`}
       </summary>
-      <div class="components">${s.items.map((c) => componentCell(c, display))}</div>
+      ${wrap(s.items)}
     </details>`;
   });
 }

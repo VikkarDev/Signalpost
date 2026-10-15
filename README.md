@@ -73,6 +73,7 @@ Bar colours per day (defaults, all adjustable under **Settings → Display**):
 - grey: no data
 
 Under **Settings → Display** you can also:
+- switch the public page between the grid layout and a compact list (one row per service)
 - choose 30, 60 or 90 days of history
 - decide whether slow responses count as up
 - hide the uptime %, response times, "checked x ago" or component descriptions from the public page
@@ -114,7 +115,7 @@ services:
   signalpost:
     build:
       context: .
-    image: signalpost:1.2.0
+    image: signalpost:1.2.5
     container_name: signalpost
     restart: unless-stopped
     init: true

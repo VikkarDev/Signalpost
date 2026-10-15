@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.5
+
+- New compact list layout for the public page (one row per service), selectable under Settings -> Display
+- "Powered by Signalpost" links to the project on GitHub
+
 ## 1.2.0
 
 - Atom/RSS feed of incidents and maintenance at `/feed.xml`

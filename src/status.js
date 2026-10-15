@@ -109,6 +109,7 @@ export const DISPLAY_DEFAULTS = Object.freeze({
   showResponseTime: true,
   showLastChecked: true,
   showDescriptions: true,
+  layout: 'grid',
 });
 
 /** Admin-configurable display options (Settings -> Display). */
@@ -132,6 +133,7 @@ export function displaySettings() {
     showResponseTime: flag('show_response_time', d.showResponseTime),
     showLastChecked: flag('show_last_checked', d.showLastChecked),
     showDescriptions: flag('show_descriptions', d.showDescriptions),
+    layout: getSetting('layout') === 'list' ? 'list' : d.layout,
   };
 }
 

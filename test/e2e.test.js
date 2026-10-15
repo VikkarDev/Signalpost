@@ -394,6 +394,16 @@ test('display settings change the public page', async () => {
   assert.doesNotMatch(page.text, /checked \d/);
   assert.match(page.text, /30 days ago/);
 
+  assert.match(page.text, /class="components"/);
+  const list = await req('POST', '/admin/settings/display', {
+    _csrf: token, layout: 'list', history_days: '30', orange_below: '100', red_below: '50', show_uptime: '1',
+  });
+  assert.equal(list.status, 303);
+  const listPage = await req('GET', '/');
+  assert.match(listPage.text, /<div class="rows">/);
+  assert.match(listPage.text, /<div class="row state-major_outage">/);
+  assert.doesNotMatch(listPage.text, /class="components"/);
+
   // back to defaults so other tests aren't affected
   await req('POST', '/admin/settings/display', {
     _csrf: token, history_days: '90', orange_below: '100', red_below: '99',

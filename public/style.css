@@ -676,3 +676,50 @@ fieldset.field legend { font-weight: 600; font-size: 13px; padding: 0 4px; }
 }
 
 .field-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+
+/* ------------------------------------------------------------ compact list layout */
+.rows {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.row {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) minmax(0, 46%) 64px;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border-soft);
+}
+.row:first-child { border-top: 0; }
+.rows.no-uptime .row { grid-template-columns: 10px minmax(0, 1fr) minmax(0, 50%); }
+.row .bars { height: 22px; gap: 1px; }
+.row-name { display: flex; align-items: center; gap: 6px; min-width: 0; flex-wrap: wrap; }
+.row-name .component-name { font-size: 14px; }
+.row-state { font-size: 12px; color: var(--muted); }
+.state-degraded .row-state { color: var(--degraded-text); }
+.state-partial_outage .row-state { color: var(--partial-text); }
+.state-major_outage .row-state { color: var(--err-text); }
+.state-maintenance .row-state { color: var(--info-text); }
+.row-uptime { text-align: right; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--unknown-icon); }
+.state-operational > .dot { background: var(--ok); }
+.state-degraded > .dot { background: var(--degraded); }
+.state-partial_outage > .dot { background: var(--partial); }
+.state-major_outage > .dot { background: var(--major); }
+.state-maintenance > .dot { background: var(--maintenance); }
+.rows + .group, .group + .rows { margin-top: 16px; }
+.group > .rows { border: 0; border-top: 1px solid var(--border-soft); border-radius: 0; box-shadow: none; }
+@media (max-width: 600px) {
+  .row { grid-template-columns: 10px minmax(0, 1fr) 96px 52px; gap: 10px; padding: 11px 16px; }
+  .rows.no-uptime .row { grid-template-columns: 10px minmax(0, 1fr) 110px; }
+  .row .bars { height: 20px; }
+}
+.group-head .group-dot { margin-left: auto; margin-right: 2px; }
+.group.state-operational > .group-head .dot { background: var(--ok); }
+.group.state-degraded > .group-head .dot { background: var(--degraded); }
+.group.state-partial_outage > .group-head .dot { background: var(--partial); }
+.group.state-major_outage > .group-head .dot { background: var(--major); }
+.group.state-maintenance > .group-head .dot { background: var(--maintenance); }
