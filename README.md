@@ -22,6 +22,16 @@ I built it to run on a Synology NAS behind Cloudflare Tunnel, but it runs anywhe
 - RSS/Atom feed of incidents and maintenance at `/feed.xml`, and a read-only JSON API at `/api/v1/status`.
 - Small footprint: about 30-60 MB RAM, a single dependency (nodemailer), Node 24's built-in SQLite.
 
+### Layouts
+
+Pick one under **Settings → Display**. Besides the grid above, there's a compact list and cards with a 24-hour response graph.
+
+| Compact list (dark theme) | Cards |
+|---|---|
+| ![Compact list layout](docs/screenshot-list-dark.png) | ![Cards layout](docs/screenshot-cards.png) |
+
+### Admin
+
 ![Admin dashboard, dark theme](docs/screenshot-admin-dark.png)
 
 ## Quick start
