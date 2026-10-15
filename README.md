@@ -12,7 +12,8 @@ I built it to run on a Synology NAS behind Cloudflare Tunnel, but it runs anywhe
 
 ## Features
 
-- Public status page with overall banner, per-service 90-day history bars and uptime percentage. Works on mobile and has a light and dark theme.
+- Public status page with overall banner, per-service 90-day history bars and uptime percentage.
+- Light and dark theme (follows your system, or pick one), and both the status page and the admin area work on phones.
 - HTTP(S), TCP and ping checks. Configurable interval, timeout, expected status codes, keyword match, "slow" threshold and how many failures in a row count as down.
 - Separate **internal**, **public** and **canary** checks, so you can tell "the app is down" apart from "the tunnel/DNS/internet is down" (more below).
 - Incidents with a public timeline, and maintenance windows that pause alerts and don't count against uptime.
@@ -76,26 +77,79 @@ Individual check results are kept for 14 days (`RAW_RETENTION_DAYS`). The daily 
 
 This works with Container Manager on DSM 7.2 and doesn't need SSH.
 
-1. In **File Station**, create `docker/signalpost` and upload the project into it. The easiest way is to upload a zip of the repo and use *Extract here*.
-2. Open **Container Manager → Project → Create**:
+1. On GitHub, click **Code → Download ZIP**.
+2. In **File Station**, create the folder `docker/signalpost` and upload the zip into it.
+3. Right-click the zip and choose **Extract → Extract here**. That creates a `Signalpost-main` folder.
+4. Open `Signalpost-main`, select everything, and **Move to** `docker/signalpost`. Then delete the empty folder and the zip.
+
+   `Dockerfile`, `src/` and `public/` must sit directly in `docker/signalpost`. Uploading files one by one with the Upload button often leaves the folders behind, and the build then fails.
+5. Open **Container Manager → Project → Create**:
    - Name: `signalpost`
    - Path: `/docker/signalpost`
    - Source: *Use existing docker-compose.yml*
-3. Edit the compose file in the editor that opens. At minimum set `ADMIN_PASSWORD`, `PUBLIC_URL` and `TZ`.
-4. Click through to **Done**. Container Manager builds the image (a couple of minutes the first time) and starts it.
-5. Under **Container**, `signalpost` should show as running and, after about 20 seconds, healthy. The **Log** tab should show `http server listening`.
+6. Edit the compose file in the editor that opens. At minimum set `ADMIN_PASSWORD`, `PUBLIC_URL` and `TZ`.
+7. Click through to **Done**. Container Manager builds the image (a couple of minutes the first time) and starts it.
+8. Under **Container**, `signalpost` should show as running and, after about 20 seconds, healthy. The **Log** tab should show `http server listening` with the port it's using.
+
+To change settings later, open the project, edit it under **YAML Configurations**, and run **Action → Build**. Restarting the container alone keeps the old settings.
 
 The app runs as UID 1000. The named volume in the compose file handles permissions for you. If you'd rather use a folder (`./data:/data`) so Hyper Backup can see it, give UID 1000 write access to that folder, or the container will log that `/data` isn't writable.
 
 ## Behind Cloudflare Tunnel
 
-If cloudflared runs as a container, put Signalpost on the same Docker network and skip the port mapping. In `docker-compose.yml`, remove `ports:`, uncomment the `networks:` sections and set the network name to the one cloudflared uses.
+If cloudflared runs as a container, put Signalpost on the same Docker network as cloudflared. The tunnel then reaches it by container name, and you don't need to publish a port at all.
+
+Here's a complete compose file for that. Replace `my-tunnel-network` with the network your cloudflared container is on (Container Manager → Network shows them):
+
+```yaml
+name: signalpost
+
+services:
+  signalpost:
+    build:
+      context: .
+    image: signalpost:1.1.0
+    container_name: signalpost
+    restart: unless-stopped
+    init: true
+    environment:
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: a-long-random-password
+      PUBLIC_URL: https://status.example.com
+      TZ: Europe/Stockholm
+    volumes:
+      - signalpost-data:/data
+    networks:
+      - my-tunnel-network
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    sysctls:
+      net.ipv4.ping_group_range: "0 2147483647"
+    mem_limit: 256m
+
+volumes:
+  signalpost-data:
+    name: signalpost-data
+
+networks:
+  my-tunnel-network:
+    external: true
+```
+
+`networks:` appears twice on purpose. The one inside the service says which network to join. The one at the bottom, at the left margin, says that network already exists. Indent with spaces, not tabs.
 
 Then in the Cloudflare dashboard, under **Zero Trust → Networks → Tunnels → your tunnel → Public Hostname → Add**:
 
 - Subdomain/domain: e.g. `status` / `example.com`
 - Path: empty
-- Service: `HTTP`, URL `signalpost:3000`
+- Service: `HTTP` (not HTTPS), URL `signalpost:3000`
+
+If you set `PORT`, use that port in the URL instead. It has to match the port in the container log line `http server listening`.
 
 I'd also recommend putting **Cloudflare Access** in front of the `/admin` path (Access → Applications → Self-hosted, path `admin`). That gives the admin area a second login without touching the public page.
 
@@ -162,12 +216,45 @@ docker compose up -d --build
 
 On Synology: stop the project, replace the files (keep your compose file), then use **Action → Build**.
 
+After updating, do a hard refresh in the browser (Ctrl+F5) if the page still looks old.
+
 Database migrations run automatically on startup. Older versions refuse to start against a database from a newer version rather than risk damaging it.
 
 Back up first. **Settings → Download database backup** gives you a consistent copy even while the app is running. To restore:
 1. Stop the container.
 2. Put the file in the data folder as `signalpost.db` and delete any `signalpost.db-wal` / `-shm` files next to it.
 3. Start the container again.
+
+## Troubleshooting
+
+**Build fails with `COPY failed: ... stat src: file does not exist`**
+The `src` and `public` folders didn't get uploaded. Check `docker/signalpost` in File Station: `Dockerfile`, `src/` and `public/` must be right there, not in a subfolder. The zip method above avoids this.
+
+**`mapping key "networks" already defined` (or `"volumes"`)**
+The compose file has the bottom `networks:` or `volumes:` block twice, usually because new text got pasted below the old one. Clear the whole file (Ctrl+A, Delete) and paste the complete file again.
+
+**The container isn't listed under your tunnel's network**
+The `networks:` entry inside the service is missing or indented wrong. Compare with the example above, then run **Build** again.
+
+**Cloudflare shows 502 Bad Gateway**
+cloudflared can't reach the container. Check that the container is running, that it's on the same network as cloudflared, and that the service URL is `HTTP` with the right port.
+
+**Blank `HTTP ERROR 404` page (not Signalpost's own error page)**
+That's cloudflared answering because no public hostname rule matches. Check that the hostname is set up in the tunnel cloudflared is actually running, with an empty path, and that the DNS record points to that tunnel.
+
+**`ADMIN_PASSWORD rejected` in the log**
+The password is shorter than 12 characters or still contains `CHANGE_ME`.
+
+**Forgot the admin password**
+1. Set a new `ADMIN_PASSWORD`, add `ADMIN_RESET_PASSWORD: "true"`, and **Build**.
+2. Log in with the new password.
+3. Remove both lines and **Build** again.
+
+**Can't log in over plain HTTP (e.g. `http://nas-ip:3000`)**
+Add `COOKIE_SECURE: "false"`. Over HTTPS through Cloudflare you don't need it.
+
+**Ping monitors say "not permitted"**
+Your Docker is too old for the `ping_group_range` sysctl. See the last point under Known limitations.
 
 ## Known limitations
 
