@@ -43,7 +43,8 @@ export function registerPublic(router) {
           name: c.name,
           description: c.description || null,
           group: c.group,
-          status: c.state,
+          status: c.liveState,
+          last_failure_at: c.lastFailureAt ? new Date(c.lastFailureAt).toISOString() : null,
           uptime_percent: c.uptime === null ? null : Number((c.uptime * 100).toFixed(4)),
           // kept for older API users; only filled when the page shows 90 days
           uptime_90d: c.uptime === null || d.display.historyDays !== 90 ? null : Number((c.uptime * 100).toFixed(4)),

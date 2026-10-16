@@ -417,6 +417,32 @@ test('display settings change the public page', async () => {
   });
 });
 
+test('a service that failed recently shows as recovered', async () => {
+  const token = await csrf('/admin/components');
+  const c = await req('POST', '/admin/components', { _csrf: token, name: 'Bouncy', sort_order: '90', visible: '1' });
+  const cid = /\/admin\/components\/(\d+)/.exec(c.location)[1];
+  const m = await req('POST', '/admin/monitors', {
+    _csrf: token, name: 'bouncy', component_id: cid, type: 'http', scope: 'public', target: `http://127.0.0.1:${targetPort}/bouncy`,
+    method: 'GET', expected_status: '200-299', interval_s: '3600', timeout_ms: '2000', failure_threshold: '1', enabled: '1',
+  });
+  const id = /\/admin\/monitors\/(\d+)/.exec(m.location)[1];
+  targetStatus = 503;
+  await req('POST', `/admin/monitors/${id}/check`, { _csrf: token });
+  targetStatus = 200;
+  await req('POST', `/admin/monitors/${id}/check`, { _csrf: token });
+
+  const api = JSON.parse((await req('GET', '/api/v1/status')).text);
+  const b = api.components.find((x) => x.name === 'Bouncy');
+  assert.equal(b.status, 'operational', 'API reports the live state');
+  assert.ok(b.last_failure_at, 'API includes the last failure');
+  const page = await req('GET', '/');
+  assert.match(page.text, /class="component state-recovered"/);
+  assert.match(page.text, /Up again\. Last failure/);
+
+  await req('POST', `/admin/monitors/${id}/delete`, { _csrf: token });
+  await req('POST', `/admin/components/${cid}/delete`, { _csrf: token });
+});
+
 test('backup download returns a SQLite file', async () => {
   const token = await csrf('/admin/settings');
   const res = await fetch(`${BASE}/admin/backup`, {

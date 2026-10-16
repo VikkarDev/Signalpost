@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.6
+
+- Status icons show recent trouble: a service that's up again but failed within the last few hours shows a yellow "Recovered" icon instead of a green check (Settings -> Display, default 3 hours, can be turned off)
+- Group headers say what's going on inside, e.g. "1 of 3 down", "1 slow" or "1 recovered recently"
+- Fixed: a service inside a group with problems could take on the group's colour even when it was fine itself
+- API: new `last_failure_at` per component (`status` is still the live state)
+
 ## 1.2.5
 
 - Two new layouts for the public page, selectable under Settings -> Display:

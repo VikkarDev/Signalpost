@@ -275,12 +275,12 @@ code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
   flex: none;
 }
 .state-icon svg { width: 12px; height: 12px; }
-.state-operational .state-icon { background: var(--ok); }
-.state-degraded .state-icon { background: var(--degraded); }
-.state-partial_outage .state-icon { background: var(--partial); }
-.state-major_outage .state-icon { background: var(--major); }
-.state-maintenance .state-icon { background: var(--maintenance); }
-.state-unknown .state-icon { background: var(--unknown-icon); }
+.component.state-operational .state-icon { background: var(--ok); }
+.component.state-degraded .state-icon { background: var(--degraded); }
+.component.state-partial_outage .state-icon { background: var(--partial); }
+.component.state-major_outage .state-icon { background: var(--major); }
+.component.state-maintenance .state-icon { background: var(--maintenance); }
+.component.state-unknown .state-icon { background: var(--unknown-icon); }
 
 .bars {
   display: flex;
@@ -316,10 +316,10 @@ code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
 .legend-edge .d30 { display: none; }
 .component-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 8px; margin-top: 6px; font-size: 13px; color: var(--muted); }
 .component-state { color: var(--text); }
-.state-degraded .component-state { color: var(--degraded-text); }
-.state-partial_outage .component-state { color: var(--partial-text); }
-.state-major_outage .component-state { color: var(--err-text); }
-.state-maintenance .component-state { color: var(--info-text); }
+.component.state-degraded .component-state { color: var(--degraded-text); }
+.component.state-partial_outage .component-state { color: var(--partial-text); }
+.component.state-major_outage .component-state { color: var(--err-text); }
+.component.state-maintenance .component-state { color: var(--info-text); }
 
 
 .empty {
@@ -699,10 +699,10 @@ fieldset.field legend { font-weight: 600; font-size: 13px; padding: 0 4px; }
 .row-name { display: flex; align-items: center; gap: 6px; min-width: 0; flex-wrap: wrap; }
 .row-name .component-name { font-size: 14px; }
 .row-state { font-size: 12px; color: var(--muted); }
-.state-degraded .row-state { color: var(--degraded-text); }
-.state-partial_outage .row-state { color: var(--partial-text); }
-.state-major_outage .row-state { color: var(--err-text); }
-.state-maintenance .row-state { color: var(--info-text); }
+.row.state-degraded .row-state { color: var(--degraded-text); }
+.row.state-partial_outage .row-state { color: var(--partial-text); }
+.row.state-major_outage .row-state { color: var(--err-text); }
+.row.state-maintenance .row-state { color: var(--info-text); }
 .row-uptime { text-align: right; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--unknown-icon); }
 .state-operational > .dot { background: var(--ok); }
@@ -743,21 +743,21 @@ fieldset.field legend { font-weight: 600; font-size: 13px; padding: 0 4px; }
 .svc-top { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .svc-top .component-name { font-size: 15px; }
 .svc-status { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; }
-.state-operational .svc-status { color: var(--ok-text); }
-.state-degraded .svc-status { color: var(--degraded-text); }
-.state-partial_outage .svc-status { color: var(--partial-text); }
-.state-major_outage .svc-status { color: var(--err-text); }
-.state-maintenance .svc-status { color: var(--info-text); }
-.state-unknown .svc-status { color: var(--muted); }
+.svc-card.state-operational .svc-status { color: var(--ok-text); }
+.svc-card.state-degraded .svc-status { color: var(--degraded-text); }
+.svc-card.state-partial_outage .svc-status { color: var(--partial-text); }
+.svc-card.state-major_outage .svc-status { color: var(--err-text); }
+.svc-card.state-maintenance .svc-status { color: var(--info-text); }
+.svc-card.state-unknown .svc-status { color: var(--muted); }
 .svc-status .dot { background: currentColor; }
 .svc-stats { display: flex; gap: 14px; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; min-height: 20px; }
 .svc-stats strong { color: var(--text); font-weight: 600; }
 .svc-card .bars { height: 32px; }
 .spark { display: block; width: 100%; height: 40px; overflow: visible; }
 .spark-line { fill: none; stroke: var(--ok); stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
-.state-degraded .spark-line { stroke: var(--degraded); }
-.state-partial_outage .spark-line { stroke: var(--partial); }
-.state-major_outage .spark-line { stroke: var(--major); }
+.svc-card.state-degraded .spark-line { stroke: var(--degraded); }
+.svc-card.state-partial_outage .spark-line { stroke: var(--partial); }
+.svc-card.state-major_outage .spark-line { stroke: var(--major); }
 .spark-dot { fill: var(--ok); }
 .spark-down { fill: var(--major); }
 .spark-empty { height: 40px; display: grid; place-items: center; border: 1px dashed var(--border); border-radius: 4px; }
@@ -765,3 +765,19 @@ fieldset.field legend { font-weight: 600; font-size: 13px; padding: 0 4px; }
 @media (max-width: 600px) {
   .cards { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* ------------------------------------------------------------ recovered: up now, failed recently */
+.component.state-recovered .state-icon,
+.group.state-recovered > .group-head .state-icon,
+.state-recovered > .dot,
+.group.state-recovered > .group-head .dot { background: var(--degraded); }
+.component.state-recovered .component-state,
+.row.state-recovered .row-state,
+.svc-card.state-recovered .svc-status { color: var(--degraded-text); }
+.svc-card.state-recovered .spark-line { stroke: var(--ok); }
+.group-summary { color: var(--muted); }
+.group.state-major_outage .group-summary,
+.group.state-partial_outage .group-summary { color: var(--err-text); }
+.group.state-degraded .group-summary,
+.group.state-recovered .group-summary { color: var(--degraded-text); }
+.group.state-maintenance .group-summary { color: var(--info-text); }

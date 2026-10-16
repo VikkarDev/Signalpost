@@ -9,6 +9,8 @@ export const HISTORY_DAYS = 90;
 
 export const COMPONENT_STATES = {
   operational: { label: 'Operational', rank: 0 },
+  // display-only: up now, but had failed checks in the last few hours (Settings -> Display)
+  recovered: { label: 'Recovered', rank: 0.5 },
   maintenance: { label: 'Under maintenance', rank: 1 },
   degraded: { label: 'Degraded performance', rank: 2 },
   partial_outage: { label: 'Partial outage', rank: 3 },
@@ -110,6 +112,7 @@ export const DISPLAY_DEFAULTS = Object.freeze({
   showLastChecked: true,
   showDescriptions: true,
   layout: 'grid',
+  recoveredHours: 3,
 });
 
 /** Admin-configurable display options (Settings -> Display). */
@@ -134,6 +137,7 @@ export function displaySettings() {
     showLastChecked: flag('show_last_checked', d.showLastChecked),
     showDescriptions: flag('show_descriptions', d.showDescriptions),
     layout: ['list', 'cards'].includes(getSetting('layout')) ? getSetting('layout') : d.layout,
+    recoveredHours: [0, 1, 3, 6, 12, 24].includes(num('recovered_hours', d.recoveredHours)) ? num('recovered_hours', d.recoveredHours) : d.recoveredHours,
   };
 }
 
@@ -279,6 +283,18 @@ export function publicStatus(now = Date.now()) {
     since,
   );
 
+  // Latest failed check per component inside the "recovered" window.
+  const lastFailure = new Map();
+  if (opts.recoveredHours > 0) {
+    for (const r of all(
+      `SELECT m.component_id AS id, MAX(c.checked_at) AS t FROM checks c JOIN monitors m ON m.id = c.monitor_id
+       WHERE c.status = 'down' AND c.in_maintenance = 0 AND c.checked_at > ? AND m.enabled = 1 AND m.scope != 'canary'
+         AND m.component_id IS NOT NULL
+       GROUP BY m.component_id`,
+      now - opts.recoveredHours * 3600000,
+    )) lastFailure.set(r.id, r.t);
+  }
+
   const out = components.map((c) => {
     const ms = monitors.filter((m) => m.component_id === c.id && m.enabled);
     let state = liveComponentState(ms);
@@ -301,12 +317,17 @@ export function publicStatus(now = Date.now()) {
     }
 
     const primary = nonCanary.find((m) => m.scope === 'public' && m.last_check_at) || nonCanary.find((m) => m.last_check_at);
+    const liveState = state;
+    const failedAt = lastFailure.get(c.id) || null;
+    if (state === 'operational' && failedAt) state = 'recovered';
     return {
       id: c.id,
       name: c.name,
       description: opts.showDescriptions ? c.description : '',
       group: c.group_name || null,
       state,
+      liveState,
+      lastFailureAt: failedAt,
       stateLabel: COMPONENT_STATES[state].label,
       uptime: opts.showUptime ? history.uptime : null,
       uptimeLabel: opts.showUptime ? formatUptime(history.uptime) : null,
@@ -320,9 +341,9 @@ export function publicStatus(now = Date.now()) {
   let overall;
   if (!out.length) overall = 'none';
   else {
-    const known = out.filter((c) => c.state !== 'unknown');
+    const known = out.filter((c) => c.liveState !== 'unknown');
     if (!known.length) overall = 'unknown';
-    else overall = known.reduce((acc, c) => worse(acc, c.state), 'operational');
+    else overall = known.reduce((acc, c) => worse(acc, c.liveState), 'operational');
   }
 
   const maintenances = all(

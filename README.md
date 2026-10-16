@@ -86,6 +86,7 @@ Under **Settings → Display** you can also:
 - switch the public page between three layouts: the grid, a compact list (one row per service), or cards with a 24-hour response-time graph
 - choose 30, 60 or 90 days of history
 - decide whether slow responses count as up
+- set how long a service shows as "Recovered" (yellow) after it failed and came back up, or turn that off
 - hide the uptime %, response times, "checked x ago" or component descriptions from the public page
 
 Individual check results are kept for 14 days (`RAW_RETENTION_DAYS`). The daily totals behind the bars are kept for 400 days.
@@ -125,7 +126,7 @@ services:
   signalpost:
     build:
       context: .
-    image: signalpost:1.2.5
+    image: signalpost:1.2.6
     container_name: signalpost
     restart: unless-stopped
     init: true

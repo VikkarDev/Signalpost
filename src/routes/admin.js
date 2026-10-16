@@ -882,6 +882,9 @@ export function registerAdmin(router) {
       if (errs.length) return sendHtml(ctx.res, 422, settingsView(ctx, errs));
       setSetting('layout', ['list', 'cards'].includes(str(f, 'layout', 10)) ? str(f, 'layout', 10) : 'grid');
       setSetting('history_days', historyDays);
+      const rawHours = str(f, 'recovered_hours', 3);
+      const recoveredHours = rawHours === '' ? 3 : Number(rawHours);
+      setSetting('recovered_hours', [0, 1, 3, 6, 12, 24].includes(recoveredHours) ? recoveredHours : 3);
       setSetting('orange_below', orange);
       setSetting('red_below', red);
       for (const key of ['slow_counts_as_up', 'show_uptime', 'show_response_time', 'show_last_checked', 'show_descriptions']) {

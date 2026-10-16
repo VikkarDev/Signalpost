@@ -580,6 +580,7 @@ export function settingsPage(ctx, { siteName, heading, footerLinks, logoVersion,
       </div>
       <p class="hint">A day's bar turns orange or red when that day's uptime drops below these values.</p>
       <div class="field">${checkbox('slow_counts_as_up', display.slowCountsAsUp, 'Count slow responses as up')}</div>
+      ${field('Show "Recovered" after a failure for', select('recovered_hours', [[0, 'Off'], [1, '1 hour'], [3, '3 hours'], [6, '6 hours'], [12, '12 hours'], [24, '24 hours']], display.recoveredHours), 'A service that is up again but failed recently gets a yellow ! instead of a green check.')}
       <fieldset class="field"><legend>Show on the public page</legend>
         ${checkbox('show_uptime', display.showUptime, 'Uptime percentage')}
         ${checkbox('show_response_time', display.showResponseTime, 'Response time')}

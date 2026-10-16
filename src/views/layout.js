@@ -1,7 +1,7 @@
 import { html, raw } from '../lib/html.js';
 import { branding } from '../branding.js';
 
-export const VERSION = '1.2.5';
+export const VERSION = '1.2.6';
 
 export const icons = {
   check: raw('<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 1 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/></svg>'),
@@ -24,6 +24,7 @@ export function stateIcon(state) {
   switch (state) {
     case 'operational':
       return icons.check;
+    case 'recovered':
     case 'degraded':
     case 'partial_outage':
       return icons.alert;

@@ -34,7 +34,7 @@ function componentCell(c, display) {
     <div class="component-head">
       <span class="component-name">${c.name}</span>
       ${c.description ? html`<span class="help" tabindex="0" data-tip="${c.description}" aria-label="${c.description}">?</span>` : ''}
-      <span class="state-icon" title="${c.stateLabel}">${stateIcon(c.state)}</span>
+      <span class="state-icon" title="${stateTitle(c)}">${stateIcon(c.state)}</span>
     </div>
     ${bar(c)}
     <div class="bar-legend">
@@ -55,11 +55,32 @@ function componentCell(c, display) {
   </div>`;
 }
 
+function stateTitle(c) {
+  if (c.state === 'recovered') return `Up again. Last failure ${relativeTime(c.lastFailureAt)}.`;
+  return c.stateLabel;
+}
+
+// "1 of 3 down · 1 slow", or "3 services" when nothing is going on.
+function groupSummary(items) {
+  const n = items.length;
+  const count = (states) => items.filter((c) => states.includes(c.state)).length;
+  const parts = [];
+  const down = count(['major_outage', 'partial_outage']);
+  const slow = count(['degraded']);
+  const maint = count(['maintenance']);
+  const recovered = count(['recovered']);
+  if (down) parts.push(`${down} of ${n} down`);
+  if (slow) parts.push(`${slow} slow`);
+  if (maint) parts.push(`${maint} in maintenance`);
+  if (recovered) parts.push(`${recovered} recovered recently`);
+  return parts.length ? parts.join(' · ') : n === 1 ? '1 service' : `${n} services`;
+}
+
 // Compact layout: one row per component.
 function componentRow(c, display) {
   const problem = c.state !== 'operational' && c.state !== 'unknown';
   return html`<div class="row state-${c.state}">
-    <span class="dot" title="${c.stateLabel}"></span>
+    <span class="dot" title="${stateTitle(c)}"></span>
     <span class="row-name">
       <span class="component-name">${c.name}</span>
       ${c.description ? html`<span class="help" tabindex="0" data-tip="${c.description}" aria-label="${c.description}">?</span>` : ''}
@@ -112,7 +133,7 @@ function componentCard(c, display) {
       <span class="component-name">${c.name}</span>
       ${c.description ? html`<span class="help" tabindex="0" data-tip="${c.description}" aria-label="${c.description}">?</span>` : ''}
     </div>
-    <div class="svc-status"><span class="dot"></span>${c.stateLabel}</div>
+    <div class="svc-status" title="${stateTitle(c)}"><span class="dot"></span>${c.stateLabel}</div>
     <div class="svc-stats">
       ${display.showUptime ? html`<span><strong>${c.uptimeLabel || '-'}</strong> uptime</span>` : ''}
       ${display.showResponseTime && ms != null ? html`<span><strong>${ms} ms</strong></span>` : ''}
@@ -157,7 +178,7 @@ function componentSections(components, display) {
     return html`<details class="group state-${state}" data-group="${s.name}" open>
       <summary class="group-head">
         <span class="group-name">${s.name}</span>
-        <span class="muted small">${s.items.length === 1 ? '1 service' : `${s.items.length} services`}</span>
+        <span class="group-summary small">${groupSummary(s.items)}</span>
         ${list
           ? html`<span class="dot group-dot" title="${COMPONENT_STATES[state].label}"></span>`
           : html`<span class="state-icon" title="${COMPONENT_STATES[state].label}">${stateIcon(state)}</span>`}
@@ -274,3 +295,5 @@ export function errorPage(status, message) {
     body: html`<div class="error-page"><h1 class="page-title">${status}</h1><p>${message}</p><p><a href="/">Go to the status page</a></p></div>`,
   });
 }
+
+export { groupSummary as groupSummaryForTest };
