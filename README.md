@@ -12,7 +12,7 @@ I built it to run on a Synology NAS behind Cloudflare Tunnel, but it runs anywhe
 
 ## Features
 
-- Public status page with overall banner, per-service history bars (30, 60 or 90 days) and uptime percentage. It updates itself without reloading, and "checked 12s ago" counts up live.
+- Public status page with overall banner, per-service history bars (30, 60 or 90 days) and uptime percentage. It updates itself without reloading, and "checked 12s ago" counts up live. Hover a day to see how long it was down, which incidents it had, and links to them.
 - A service that failed recently shows as "Recovered" for a while instead of plain green, and a monitor that stops reporting gets its time marked "(late)", so the page never looks fine just because nothing is being checked.
 - Group related services into collapsible sections, upload your own logo, and add footer links.
 - Light and dark theme (follows your system, or pick one), and both the status page and the admin area work on phones.
@@ -127,7 +127,7 @@ services:
   signalpost:
     build:
       context: .
-    image: signalpost:1.2.8
+    image: signalpost:1.2.9
     container_name: signalpost
     restart: unless-stopped
     init: true

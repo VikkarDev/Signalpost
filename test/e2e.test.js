@@ -277,6 +277,10 @@ test('incident lifecycle', async () => {
   let pub = await req('GET', '/');
   assert.match(pub.text, /Files slow/);
   assert.match(pub.text, /Looking into it/);
+  // Today's bar lists the incident under "Related" with how long it has been going on.
+  const today = [...pub.text.matchAll(/data-day="([^"]+)"/g)].map((m) => JSON.parse(m[1].replaceAll('&quot;', '"'))).find((d) => d.i);
+  assert.deepEqual(today.i, [[id, 'Files slow']]);
+  assert.equal(today.r[0][0], 'Degraded');
   const u = await req('POST', `/admin/incidents/${id}/updates`, { _csrf: token, status: 'resolved', message: 'Fixed <script>alert(1)</script>' });
   assert.equal(u.status, 303);
   pub = await req('GET', `/incidents/${id}`);

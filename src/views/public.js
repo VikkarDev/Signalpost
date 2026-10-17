@@ -15,17 +15,40 @@ const DAY_STATE_LABEL = {
   nodata: 'No data',
 };
 
+const INCIDENT_ROW = { critical: 'Major outage', major: 'Partial outage', minor: 'Degraded', none: 'Incident' };
+
+/** [label, hours, minutes, measured] for the day popup; measured rows are estimated from check counts. */
+function durationRow(label, ms, measured = false) {
+  const mins = Math.max(1, Math.round(ms / 60000));
+  return [label, Math.floor(mins / 60), mins % 60, measured ? 1 : 0];
+}
+
+/**
+ * What the popup over one history bar shows; public/app.js turns it into HTML.
+ * Short keys because there's one per bar: d date, u uptime, n note, r rows, i related incidents.
+ */
+function dayDetail(d) {
+  const rows = [];
+  for (const impact of ['critical', 'major', 'minor', 'none']) {
+    if (d.incidentMs?.[impact] != null) rows.push(durationRow(INCIDENT_ROW[impact], d.incidentMs[impact]));
+  }
+  if (d.downMs) rows.push(durationRow('Down', d.downMs, true));
+  if (d.slowMs) rows.push(durationRow('Slow', d.slowMs, true));
+  if (d.maintenanceMs) rows.push(durationRow('Maintenance', d.maintenanceMs));
+  const out = { d: formatDay(d.day) };
+  if (d.uptime != null) out.u = formatUptime(d.uptime);
+  if (rows.length) out.r = rows;
+  else out.n = DAY_STATE_LABEL[d.state];
+  if (d.incidents) out.i = d.incidents.map((i) => [i.id, i.title]);
+  return out;
+}
+
 function bar(component) {
   const n = component.days.length;
   return html`<div class="bars" role="img" aria-label="${component.name}: ${n}-day history${component.uptimeLabel ? `, ${component.uptimeLabel} uptime` : ''}">
-    ${component.days.map((d, i) => {
-      const parts = [formatDay(d.day), DAY_STATE_LABEL[d.state]];
-      if (d.uptime != null) parts.push(`${formatUptime(d.uptime)} uptime · ${d.checks} checks${d.down ? ` · ${d.down} failed` : ''}`);
-      else if (d.checks && d.down) parts.push(`${d.down} of ${d.checks} checks failed`);
-      if (d.maintenance) parts.push(`${d.maintenance} checks during maintenance`);
-      if (d.incidents) for (const inc of d.incidents) parts.push(`Incident: ${inc.title}`);
-      return html`<span class="bar bar-${d.state}${i < n - 30 ? ' bar-old' : ''}" data-tip="${parts.join('\n')}"></span>`;
-    })}
+    ${component.days.map(
+      (d, i) => html`<span class="bar bar-${d.state}${i < n - 30 ? ' bar-old' : ''}" data-day="${JSON.stringify(dayDetail(d))}"></span>`,
+    )}
   </div>`;
 }
 

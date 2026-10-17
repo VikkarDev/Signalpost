@@ -3,7 +3,7 @@
 
 import { all, get, getSetting } from './db.js';
 import { config } from './config.js';
-import { lastDays, dayKey, DAY_MS } from './lib/time.js';
+import { lastDays, localInputToTs, DAY_MS } from './lib/time.js';
 
 export const HISTORY_DAYS = 90;
 
@@ -165,6 +165,10 @@ export function componentHistory(monitorIds, days = HISTORY_DAYS, now = Date.now
     ...monitorIds,
     dayList[0],
   );
+  // Check counts times the check interval give an estimate of how long a monitor was down or slow.
+  const intervalMs = new Map(
+    all(`SELECT id, interval_s FROM monitors WHERE id IN (${placeholders})`, ...monitorIds).map((m) => [m.id, m.interval_s * 1000]),
+  );
   const byDay = new Map();
   const perMonitor = new Map();
   for (const r of rows) {
@@ -184,11 +188,16 @@ export function componentHistory(monitorIds, days = HISTORY_DAYS, now = Date.now
     let maintenance = 0;
     let checks = 0;
     let down = 0;
+    let downMs = 0;
+    let slowMs = 0;
     for (const r of list) {
       maintenance += r.maintenance;
       const counted = r.up + r.degraded + r.down;
       checks += counted;
       down += r.down;
+      const every = intervalMs.get(r.monitor_id) || 0;
+      downMs = Math.max(downMs, r.down * every);
+      slowMs = Math.max(slowMs, r.degraded * every);
       if (!counted) continue;
       const ratio = okCount(r, opts) / counted;
       if (!worst || ratio < worst.ratio || (ratio === worst.ratio && r.degraded > worst.r.degraded)) worst = { ratio, r };
@@ -201,6 +210,8 @@ export function componentHistory(monitorIds, days = HISTORY_DAYS, now = Date.now
       checks,
       down,
       maintenance,
+      downMs: Math.min(downMs, DAY_MS),
+      slowMs: Math.min(slowMs, DAY_MS),
     };
   });
 
@@ -265,6 +276,29 @@ export function responseSeries(monitorId, now = Date.now(), hours = 24, buckets 
   return out.map((b) => (!b.any ? null : b.down && !b.n ? { down: true } : { ms: b.n ? Math.round(b.sum / b.n) : null, down: b.down }));
 }
 
+/** Start and end (exclusive) of a calendar day in the status timezone. */
+function dayBounds(day) {
+  const [y, m, d] = day.split('-').map(Number);
+  const next = new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
+  return [localInputToTs(`${day}T00:00`), localInputToTs(`${next}T00:00`)];
+}
+
+/** How much of [start, end) the spans cover, counting overlapping spans once. */
+export function coveredMs(spans, start, end) {
+  const clipped = spans
+    .map(([a, b]) => [Math.max(a, start), Math.min(b, end)])
+    .filter(([a, b]) => b > a)
+    .sort((x, y) => x[0] - y[0]);
+  let total = 0;
+  let reach = start;
+  for (const [a, b] of clipped) {
+    if (b <= reach) continue;
+    total += b - Math.max(a, reach);
+    reach = b;
+  }
+  return total;
+}
+
 /** Everything the public page and public API need. */
 export function publicStatus(now = Date.now()) {
   const components = all('SELECT * FROM components WHERE visible = 1 ORDER BY sort_order, name');
@@ -281,6 +315,13 @@ export function publicStatus(now = Date.now()) {
      WHERE i.created_at >= ? OR i.resolved_at IS NULL OR i.resolved_at >= ?`,
     since,
     since,
+  );
+  const recentMaintenance = all(
+    `SELECT m.starts_at, m.ends_at, mc.component_id FROM maintenances m
+     JOIN maintenance_components mc ON mc.maintenance_id = m.id
+     WHERE m.ends_at >= ? AND m.starts_at <= ?`,
+    since,
+    now,
   );
 
   // Latest failed check per component inside the "recovered" window.
@@ -307,13 +348,19 @@ export function publicStatus(now = Date.now()) {
 
     if (!opts.showUptime) for (const d of history.days) d.uptime = null;
     const incs = recentIncidents.filter((i) => i.component_id === c.id);
+    const windows = recentMaintenance.filter((m) => m.component_id === c.id);
     for (const d of history.days) {
-      const dayIncs = incs.filter((i) => {
-        const startDay = dayKey(i.created_at);
-        const endDay = i.resolved_at ? dayKey(i.resolved_at) : dayKey(now);
-        return d.day >= startDay && d.day <= endDay;
-      });
+      const [start, end] = dayBounds(d.day);
+      const dayIncs = incs.filter((i) => i.created_at < end && (i.resolved_at ?? now) >= start);
       if (dayIncs.length) d.incidents = dayIncs.map((i) => ({ id: i.id, title: i.title, impact: i.impact }));
+      // Time per incident impact on this day, from the incidents' own start and end times.
+      d.incidentMs = {};
+      for (const impact of INCIDENT_IMPACTS) {
+        const spans = dayIncs.filter((i) => i.impact === impact).map((i) => [i.created_at, i.resolved_at ?? now]);
+        // Kept even at 0 ms, so an incident opened a moment ago still gets a row.
+        if (spans.length) d.incidentMs[impact] = coveredMs(spans, start, Math.min(end, now));
+      }
+      d.maintenanceMs = coveredMs(windows.map((m) => [m.starts_at, m.ends_at]), start, Math.min(end, now));
     }
 
     const primary = nonCanary.find((m) => m.scope === 'public' && m.last_check_at) || nonCanary.find((m) => m.last_check_at);

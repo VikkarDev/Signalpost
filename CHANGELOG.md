@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.9
+
+- Hovering (or tapping) a day in the history bars shows a breakdown: uptime that day, how long each incident lasted by impact, measured downtime and slow time, maintenance, and links to the related incidents
+- Incident and maintenance times come from their actual start and end. Down and slow times are estimated from the number of failed or slow checks and are marked with *
+- Fixed: on phones, tapping a bar opened the tooltip and closed it again straight away
+
 ## 1.2.8
 
 - New alert channels: **ntfy** for push notifications to your phone (ntfy.sh or your own server, optional access token), and **webhook** for any URL that takes a JSON POST (Home Assistant, n8n, Slack-style webhooks)

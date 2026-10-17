@@ -440,6 +440,60 @@ time.ago.late::after { content: " (late)"; }
   box-shadow: 0 4px 12px rgba(31, 35, 40, 0.25);
 }
 
+/* Day breakdown over a history bar. Takes pointer events so the incident links can be clicked. */
+.tooltip-day {
+  width: 290px;
+  max-width: calc(100vw - 16px);
+  padding: 16px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  font-size: 13px;
+  white-space: normal;
+  pointer-events: auto;
+  box-shadow: 0 8px 24px rgba(31, 35, 40, 0.18);
+}
+.tooltip-day::before {
+  content: "";
+  position: absolute;
+  bottom: -6px;
+  left: var(--arrow-x, 50%);
+  width: 10px;
+  height: 10px;
+  margin-left: -5px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  transform: rotate(45deg);
+}
+.tooltip-day.tooltip-below::before { bottom: auto; top: -6px; transform: rotate(225deg); }
+.day-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.day-uptime { color: var(--muted); font-size: 12px; }
+.day-note { margin: 0; color: var(--muted); }
+.day-row {
+  display: grid;
+  grid-template-columns: 1fr auto 4.2em;
+  gap: 10px;
+  align-items: center;
+  margin-top: 6px;
+  padding: 9px 10px;
+  border-radius: var(--radius);
+  background: var(--btn-bg);
+  font-weight: 600;
+}
+.day-num { text-align: right; font-variant-numeric: tabular-nums; }
+.day-foot { margin: 8px 0 0; color: var(--muted); font-size: 11px; }
+.day-section {
+  margin: 14px 0 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.day-link { display: block; padding: 2px 0; color: var(--text); }
+.day-link + .day-link { margin-top: 4px; }
+
 /* ------------------------------------------------------------ responsive */
 @media (max-width: 760px) {
   .components { grid-template-columns: minmax(0, 1fr); }

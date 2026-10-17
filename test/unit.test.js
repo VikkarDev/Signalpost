@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { localInputToTs, tsToLocalInput, dayKey, lastDays } from '../src/lib/time.js';
 import { parseExpectedStatus } from '../src/monitor/probes.js';
-import { liveComponentState, diagnose, formatUptime } from '../src/status.js';
+import { liveComponentState, diagnose, formatUptime, coveredMs } from '../src/status.js';
 import { html, raw } from '../src/lib/html.js';
 import { DISCORD_WEBHOOK_RE, parseEmails, ntfyEndpoint, validateRuleTarget } from '../src/notify/index.js';
 import { DatabaseSync } from 'node:sqlite';
@@ -132,4 +132,11 @@ test('migration 3 keeps existing alert rules and their delivery log', () => {
     closeDatabase();
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('overlapping incidents on a day are only counted once', () => {
+  assert.equal(coveredMs([[0, 50], [30, 80], [200, 300]], 0, 250), 130);
+  assert.equal(coveredMs([[-100, 1000]], 0, 100), 100);
+  assert.equal(coveredMs([[10, 20], [12, 15]], 0, 100), 10);
+  assert.equal(coveredMs([], 0, 100), 0);
 });
