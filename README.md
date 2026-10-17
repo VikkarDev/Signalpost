@@ -12,7 +12,8 @@ I built it to run on a Synology NAS behind Cloudflare Tunnel, but it runs anywhe
 
 ## Features
 
-- Public status page with overall banner, per-service history bars (30, 60 or 90 days) and uptime percentage. It updates itself without reloading.
+- Public status page with overall banner, per-service history bars (30, 60 or 90 days) and uptime percentage. It updates itself without reloading, and "checked 12s ago" counts up live.
+- A service that failed recently shows as "Recovered" for a while instead of plain green, and a monitor that stops reporting gets its time marked "(late)", so the page never looks fine just because nothing is being checked.
 - Group related services into collapsible sections, upload your own logo, and add footer links.
 - Light and dark theme (follows your system, or pick one), and both the status page and the admin area work on phones.
 - HTTP(S), TCP and ping checks. Configurable interval, timeout, expected status codes, keyword match, "slow" threshold and how many failures in a row count as down.
@@ -264,12 +265,15 @@ cloudflared can't reach the container. Check that the container is running, that
 **Blank `HTTP ERROR 404` page (not Signalpost's own error page)**
 That's cloudflared answering because no public hostname rule matches. Check that the hostname is set up in the tunnel cloudflared is actually running, with an empty path, and that the DNS record points to that tunnel.
 
+**A service says "checked 9 min ago (late)"**
+No check result has come in for over two intervals. Usually the container was stopped or restarted, or the NAS was busy. Look at the monitor in the admin area and at the container log. It goes back to normal by itself with the next check.
+
 **`ADMIN_PASSWORD rejected` in the log**
 The password is shorter than 12 characters or still contains `CHANGE_ME`.
 
 **Forgot the admin password**
-1. Set a new `ADMIN_PASSWORD`, add `ADMIN_RESET_PASSWORD: "true"`, and **Build**.
-2. Log in with the new password.
+1. Set a new `ADMIN_PASSWORD`, add `ADMIN_RESET_PASSWORD: "true"`, and **Build** (a plain restart doesn't pick up compose changes).
+2. The log should say `admin password reset from environment`. Log in with the new password. If you tried too many times, wait 15 minutes for the lockout to pass.
 3. Remove both lines and **Build** again.
 
 **Can't log in over plain HTTP (e.g. `http://nas-ip:3000`)**
