@@ -432,7 +432,7 @@ export const OVERALL_LABELS = {
   partial_outage: 'Partial System Outage',
   major_outage: 'Major System Outage',
   maintenance: 'Scheduled Maintenance in Progress',
-  unknown: 'Collecting data, no checks completed yet',
+  unknown: 'Waiting for the first check',
   none: 'No services configured yet',
 };
 

@@ -2,7 +2,7 @@
 
 import { get, run, tx } from '../db.js';
 import { log } from '../lib/log.js';
-import { formatDuration, formatTime } from '../lib/time.js';
+import { formatTime } from '../lib/time.js';
 import { notifyIncident } from '../notify/index.js';
 
 function serviceName(m) {
@@ -26,7 +26,7 @@ export async function syncAutoIncident(rec, now = Date.now()) {
       return;
     }
     if (m.state === 'up' || m.state === 'degraded') {
-      const message = `${serviceName(m)} is responding again. Resolved automatically.`;
+      const message = `${serviceName(m)} is back up.`;
       tx(() => {
         run('INSERT INTO incident_updates (incident_id, status, message, created_at) VALUES (?, ?, ?, ?)', inc.id, 'resolved', message, now);
         run(`UPDATE incidents SET status = 'resolved', resolved_at = ?, updated_at = ? WHERE id = ?`, now, now, inc.id);
@@ -42,7 +42,7 @@ export async function syncAutoIncident(rec, now = Date.now()) {
   if (now - m.state_since < m.auto_incident_minutes * 60000) return;
 
   const name = serviceName(m);
-  const message = `Our checks have been failing since ${formatTime(m.state_since)} (${formatDuration(now - m.state_since)}). This incident was opened automatically and will close when ${name} is back.`;
+  const message = `${name} stopped responding at ${formatTime(m.state_since)}.`;
   const id = tx(() => {
     const iid = Number(
       run(`INSERT INTO incidents (title, status, impact, created_at, updated_at) VALUES (?, 'investigating', 'major', ?, ?)`, `${name} is down`, now, now)

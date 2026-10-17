@@ -65,8 +65,8 @@ test('group header summary', async () => {
   const { groupSummaryForTest } = await import('../src/views/public.js');
   const c = (state) => ({ state });
   assert.equal(groupSummaryForTest([c('operational'), c('operational')]), '2 services');
-  assert.equal(groupSummaryForTest([c('major_outage'), c('operational')]), '1 of 2 down');
-  assert.equal(groupSummaryForTest([c('partial_outage'), c('degraded'), c('recovered')]), '1 of 3 down · 1 slow · 1 recovered recently');
+  assert.equal(groupSummaryForTest([c('major_outage'), c('operational')]), '1 down');
+  assert.equal(groupSummaryForTest([c('partial_outage'), c('degraded'), c('recovered')]), '1 down · 1 slow · 1 back up');
 });
 
 test('uptime formatting never rounds up to 100%', () => {

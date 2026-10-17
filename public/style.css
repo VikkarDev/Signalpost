@@ -46,7 +46,7 @@
   --shadow-pop: 0 10px 30px rgba(17, 19, 24, 0.12);
 
   --radius: 8px;
-  --radius-lg: 12px;
+  --radius-lg: 6px;
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
 }
@@ -204,42 +204,26 @@ time.ago.late::after { content: " (late)"; }
 .banner {
   display: flex;
   align-items: center;
-  gap: 16px;
-  margin-top: 32px;
-  padding: 18px 20px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow);
-}
-.banner-icon {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
+  gap: 12px;
+  margin-top: 28px;
+  padding: 14px 20px;
+  border-radius: var(--radius);
   color: #fff;
   background: var(--unknown-solid);
+  font-size: 18px;
+  font-weight: 600;
 }
-.banner-icon svg { width: 20px; height: 20px; display: block; }
-.banner-title { margin: 0; font-size: 19px; font-weight: 650; letter-spacing: -0.01em; line-height: 1.3; }
-.banner-sub { margin-top: 2px; color: var(--muted); font-size: 13px; }
-.banner-operational { background: var(--ok-bg); border-color: var(--ok-border); }
-.banner-operational .banner-icon { background: var(--ok); }
-.banner-degraded { background: var(--warn-bg); border-color: var(--warn-border); }
-.banner-degraded .banner-icon { background: var(--degraded); }
-.banner-partial_outage { background: var(--partial-bg); border-color: var(--warn-border); }
-.banner-partial_outage .banner-icon { background: var(--partial); }
-.banner-major_outage { background: var(--err-bg); border-color: var(--err-border); }
-.banner-major_outage .banner-icon { background: var(--major); }
-.banner-maintenance { background: var(--info-bg); border-color: var(--info-bg); }
-.banner-maintenance .banner-icon { background: var(--maintenance); }
+.banner-icon svg { width: 18px; height: 18px; display: block; }
+.banner-operational { background: var(--ok); }
+.banner-degraded { background: var(--degraded); }
+.banner-partial_outage { background: var(--partial); }
+.banner-major_outage { background: var(--major); }
+.banner-maintenance { background: var(--maintenance); }
 
 /* ------------------------------------------------------------ sections */
 .section { margin-top: 36px; }
-.page-title { font-size: 22px; font-weight: 650; margin: 0 0 16px; letter-spacing: -0.015em; }
-.section .page-title, .section-title { font-size: 16px; font-weight: 650; margin: 0 0 12px; letter-spacing: -0.005em; }
+.page-title { font-size: 22px; font-weight: 600; margin: 0 0 14px; }
+.section-title { font-size: 18px; font-weight: 600; margin: 0 0 12px; }
 
 .components {
   display: grid;
@@ -403,7 +387,7 @@ time.ago.late::after { content: " (late)"; }
 .incident-update p { margin: 2px 0; }
 .incident-update:first-of-type { border-top: 0; }
 .past-day { margin-bottom: 22px; }
-.past-day-title { font-size: 13px; font-weight: 600; color: var(--muted); margin: 0 0 8px; }
+.past-day-title { font-size: 15px; font-weight: 600; padding-bottom: 6px; border-bottom: 1px solid var(--border); margin: 0 0 10px; }
 .pill {
   display: inline-block;
   font-size: 11px;
@@ -418,7 +402,7 @@ time.ago.late::after { content: " (late)"; }
 .pill-operational { color: var(--ok-text); border-color: var(--ok-text); }
 .pill-major_outage { color: var(--err-text); border-color: var(--err-text); }
 .pager { display: flex; justify-content: space-between; margin: 20px 0; }
-.updated { margin-top: 28px; }
+.updated { margin-top: 24px; }
 .error-page { padding: 60px 0; text-align: center; }
 
 .site-footer {
@@ -522,9 +506,7 @@ time.ago.late::after { content: " (late)"; }
   .bars-recent { display: block; }
   .legend-edge .d90 { display: none; }
   .legend-edge .d30 { display: inline; }
-  .banner { margin-top: 20px; padding: 14px 16px; gap: 12px; }
-  .banner-icon { width: 34px; height: 34px; }
-  .banner-title { font-size: 17px; }
+  .banner { margin-top: 20px; padding: 12px 16px; font-size: 16px; }
   .page-title { font-size: 21px; }
 }
 

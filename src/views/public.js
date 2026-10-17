@@ -83,7 +83,7 @@ function stateTitle(c) {
   return c.stateLabel;
 }
 
-// "1 of 3 down · 1 slow", or "3 services" when nothing is going on.
+// "1 down · 1 slow", or "3 services" when nothing is going on.
 function groupSummary(items) {
   const n = items.length;
   const count = (states) => items.filter((c) => states.includes(c.state)).length;
@@ -92,10 +92,10 @@ function groupSummary(items) {
   const slow = count(['degraded']);
   const maint = count(['maintenance']);
   const recovered = count(['recovered']);
-  if (down) parts.push(`${down} of ${n} down`);
+  if (down) parts.push(`${down} down`);
   if (slow) parts.push(`${slow} slow`);
   if (maint) parts.push(`${maint} in maintenance`);
-  if (recovered) parts.push(`${recovered} recovered recently`);
+  if (recovered) parts.push(`${recovered} back up`);
   return parts.length ? parts.join(' · ') : n === 1 ? '1 service' : `${n} services`;
 }
 
@@ -229,17 +229,10 @@ export function statusPage(data, past) {
   const bannerState = overall === 'none' || overall === 'unknown' ? 'unknown' : overall;
   const pastDays = lastDays(7).reverse();
 
-  const n = data.components.length;
-  const affected = data.components.filter((c) => c.liveState !== 'operational' && c.liveState !== 'unknown').length;
-  const summary = !n ? '' : affected ? `${affected} of ${n} ${n === 1 ? 'service' : 'services'} affected` : `${n} ${n === 1 ? 'service' : 'services'}`;
-
   const body = html`
   <div class="banner banner-${bannerState}" role="status">
     <span class="banner-icon">${stateIcon(bannerState)}</span>
-    <div>
-      <p class="banner-title">${OVERALL_LABELS[overall]}</p>
-      <div class="banner-sub">${summary ? `${summary} · ` : ''}updated ${ago(data.generatedAt)}</div>
-    </div>
+    <span>${OVERALL_LABELS[overall]}</span>
   </div>
 
   ${data.activeIncidents.length
@@ -282,7 +275,8 @@ export function statusPage(data, past) {
             : '';
         })
       : html`<p class="muted">No incidents in the past 7 days.</p>`}
-  </section>`;
+  </section>
+  <p class="muted small updated">Updated ${ago(data.generatedAt)}</p>`;
 
   return publicLayout({
     title: `${data.siteName}`,

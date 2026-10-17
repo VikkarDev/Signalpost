@@ -36,7 +36,7 @@
       frag.appendChild(line);
       if (row[3]) measured = true;
     });
-    if (measured) frag.appendChild(el('p', 'day-foot', '* estimated from failed and slow checks'));
+    if (measured) frag.appendChild(el('p', 'day-foot', '* estimate, based on the checks'));
     if (day.i && day.i.length) {
       frag.appendChild(el('div', 'day-section', 'Related'));
       day.i.forEach(function (inc) {

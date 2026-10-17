@@ -579,7 +579,7 @@ test('automatic incidents open after the delay and close on recovery', async () 
   await new Promise((r) => setTimeout(r, 200));
   assert.equal((await incidents()).length, 0, 'resolved once it is back');
   const pub = await req('GET', `/incidents/${open[0].id}`);
-  assert.match(pub.text, /Resolved automatically/);
+  assert.match(pub.text, /Photos is back up/);
   await req('POST', `/admin/monitors/${id}/delete`, { _csrf: token });
   await req('POST', `/admin/components/${cid}/delete`, { _csrf: token });
 });
