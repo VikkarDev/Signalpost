@@ -1,6 +1,24 @@
 import { html, raw } from '../lib/html.js';
 import { branding } from '../branding.js';
 import { relativeTime, formatDateTime } from '../lib/time.js';
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const STATIC_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'public');
+const assetUrls = new Map();
+
+/** /static URL with a hash of the file's contents, so browsers fetch it again whenever it changes. */
+function asset(name) {
+  let url = assetUrls.get(name);
+  if (!url) {
+    const hash = crypto.createHash('sha256').update(fs.readFileSync(path.join(STATIC_DIR, name))).digest('hex').slice(0, 10);
+    url = `/static/${name}?v=${hash}`;
+    assetUrls.set(name, url);
+  }
+  return url;
+}
 
 export const VERSION = '1.3.0';
 
@@ -77,10 +95,10 @@ ${logoVersion
   ? html`<link rel="icon" href="/logo?v=${logoVersion}">`
   : html`<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">`}
 <link rel="alternate" type="application/atom+xml" title="${siteName}" href="/feed.xml">
-<script src="/static/theme.js?v=${VERSION}"></script>
-<link rel="stylesheet" href="/static/style.css?v=${VERSION}">
-<script src="/static/app.js?v=${VERSION}" defer></script>
-<script src="/static/ago.js?v=${VERSION}" defer></script>
+<script src="${asset('theme.js')}"></script>
+<link rel="stylesheet" href="${asset('style.css')}">
+<script src="${asset('app.js')}" defer></script>
+<script src="${asset('ago.js')}" defer></script>
 </head>
 <body class="public"${live ? html` data-live="30"` : ''}>
 <header class="hero">
@@ -124,10 +142,10 @@ export function adminLayout({ title, body, user, csrf, active, flash }) {
 <title>${title} · Signalpost admin</title>
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
-<script src="/static/theme.js?v=${VERSION}"></script>
-<link rel="stylesheet" href="/static/style.css?v=${VERSION}">
-<script src="/static/admin.js?v=${VERSION}" defer></script>
-<script src="/static/ago.js?v=${VERSION}" defer></script>
+<script src="${asset('theme.js')}"></script>
+<link rel="stylesheet" href="${asset('style.css')}">
+<script src="${asset('admin.js')}" defer></script>
+<script src="${asset('ago.js')}" defer></script>
 </head>
 <body class="admin">
 <header class="admin-bar">
