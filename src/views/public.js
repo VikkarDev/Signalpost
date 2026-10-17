@@ -56,25 +56,18 @@ function componentCell(c, display) {
   return html`<div class="component state-${c.state}">
     <div class="component-head">
       <span class="component-name">${c.name}</span>
-      ${c.description ? html`<span class="help" tabindex="0" data-tip="${c.description}" aria-label="${c.description}">?</span>` : ''}
-      <span class="state-icon" title="${stateTitle(c)}">${stateIcon(c.state)}</span>
+      ${c.description ? html`<span class="component-desc" title="${c.description}">${c.description}</span>` : ''}
+      <span class="component-state" title="${stateTitle(c)}">${c.stateLabel}</span>
     </div>
     ${bar(c)}
     <div class="bar-legend">
-      <span class="legend-edge">${c.days.length > 30 ? html`<span class="d90">${c.days.length} days ago</span><span class="d30">30 days ago</span>` : '30 days ago'}</span>
-      <span class="legend-line"></span>
-      ${display.showUptime
-        ? html`<span class="legend-uptime">${c.uptimeLabel ? `${c.uptimeLabel} uptime` : 'No data yet'}</span>
-            <span class="legend-line"></span>`
-        : ''}
-      <span class="legend-edge">Today</span>
+      <span>${c.days.length > 30 ? html`<span class="d90">${c.days.length} days ago</span><span class="d30">30 days ago</span>` : '30 days ago'}</span>
+      ${display.showUptime ? html`<span>${c.uptimeLabel ? `${c.uptimeLabel} uptime` : 'No data yet'}</span>` : ''}
+      <span>Today</span>
     </div>
-    <div class="component-meta">
-      <span class="component-state">${c.stateLabel}</span>
-      ${c.lastCheckAt || c.responseMs != null
-        ? html`<span class="muted">${c.responseMs != null ? `${c.responseMs} ms` : ''}${c.responseMs != null && c.lastCheckAt ? ' · ' : ''}${c.lastCheckAt ? ago(c.lastCheckAt, 'checked ', c.lateAfterMs) : ''}</span>`
-        : ''}
-    </div>
+    ${c.lastCheckAt || c.responseMs != null
+      ? html`<div class="component-meta">${c.responseMs != null ? `${c.responseMs} ms` : ''}${c.responseMs != null && c.lastCheckAt ? ' · ' : ''}${c.lastCheckAt ? ago(c.lastCheckAt, 'checked ', c.lateAfterMs) : ''}</div>`
+      : ''}
   </div>`;
 }
 
@@ -106,7 +99,7 @@ function componentRow(c, display) {
     <span class="dot" title="${stateTitle(c)}"></span>
     <span class="row-name">
       <span class="component-name">${c.name}</span>
-      ${c.description ? html`<span class="help" tabindex="0" data-tip="${c.description}" aria-label="${c.description}">?</span>` : ''}
+      ${c.description ? html`<span class="component-desc" title="${c.description}">${c.description}</span>` : ''}
       ${problem ? html`<span class="row-state">${c.stateLabel}</span>` : ''}
     </span>
     ${bar(c)}
@@ -154,8 +147,8 @@ function componentCard(c, display) {
   return html`<div class="svc-card state-${c.state}">
     <div class="svc-top">
       <span class="component-name">${c.name}</span>
-      ${c.description ? html`<span class="help" tabindex="0" data-tip="${c.description}" aria-label="${c.description}">?</span>` : ''}
     </div>
+    ${c.description ? html`<div class="component-desc">${c.description}</div>` : ''}
     <div class="svc-status" title="${stateTitle(c)}"><span class="dot"></span>${c.stateLabel}</div>
     <div class="svc-stats">
       ${display.showUptime ? html`<span><strong>${c.uptimeLabel || '-'}</strong> uptime</span>` : ''}
@@ -171,7 +164,6 @@ function componentCard(c, display) {
 
 // Ungrouped components and groups, in the order their first component appears.
 function componentSections(components, display) {
-  const list = display.layout !== 'grid';
   const wrap = (items) => {
     if (display.layout === 'cards') return html`<div class="cards">${items.map((c) => componentCard(c, display))}</div>`;
     if (display.layout === 'list') return html`<div class="rows${display.showUptime ? '' : ' no-uptime'}">${items.map((c) => componentRow(c, display))}</div>`;
@@ -201,10 +193,7 @@ function componentSections(components, display) {
     return html`<details class="group state-${state}" data-group="${s.name}" open>
       <summary class="group-head">
         <span class="group-name">${s.name}</span>
-        <span class="group-summary small">${groupSummary(s.items)}</span>
-        ${list
-          ? html`<span class="dot group-dot" title="${COMPONENT_STATES[state].label}"></span>`
-          : html`<span class="state-icon" title="${COMPONENT_STATES[state].label}">${stateIcon(state)}</span>`}
+        <span class="group-summary" title="${COMPONENT_STATES[state].label}">${groupSummary(s.items)}</span>
       </summary>
       ${wrap(s.items)}
     </details>`;

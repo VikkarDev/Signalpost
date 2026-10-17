@@ -2,7 +2,7 @@
 
 ## 1.3.0
 
-- Public page: a solid header bar instead of the fading band behind the logo, which used to cut through the status banner
+- Public page is simpler: one background colour with thin lines instead of floating cards and shadows, a solid header bar, each service's state written out ("Operational", "Major outage") instead of an icon, and descriptions shown next to the name instead of behind a "?"
 - New colour palette for light and dark mode, also used in the admin area
 - Plainer wording: group headers say "1 down · 1 slow · 1 back up", and automatic incidents just say when the service stopped responding and when it's back
 - **Heartbeat monitors**: a backup script or cron job calls a secret URL when it finishes, and the monitor goes down if the call doesn't come. Supports reporting failures (`?status=down&msg=...`) and the job's duration (`?ms=...`)

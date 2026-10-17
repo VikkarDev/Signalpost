@@ -244,7 +244,9 @@ time.ago.late::after { content: " (late)"; }
 .components .component:nth-last-child(-n + 2):nth-child(odd),
 .components .component:last-child { border-bottom: 0; }
 
-.component-head { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; }
+.component-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; min-width: 0; }
+.component-desc { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 13px; }
+.component-head .component-state { margin-left: auto; flex: none; font-size: 13px; }
 .component-name { font-weight: 600; font-size: 14.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .help {
   display: inline-grid;
@@ -300,17 +302,18 @@ time.ago.late::after { content: " (late)"; }
 
 .bar-legend {
   display: flex;
-  align-items: center;
+  justify-content: space-between;
   gap: 12px;
-  margin-top: 8px;
+  margin-top: 6px;
   color: var(--muted);
   font-size: 12px;
   white-space: nowrap;
 }
-.legend-line { flex: 1; height: 1px; background: var(--border-soft); min-width: 8px; }
-.legend-edge .d30 { display: none; }
-.component-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 8px; margin-top: 6px; font-size: 13px; color: var(--muted); }
+.bar-legend .d30 { display: none; }
+.component-meta { margin-top: 2px; font-size: 12px; color: var(--muted); }
 .component-state { color: var(--text); }
+.component.state-operational .component-state { color: var(--ok-text); }
+.component.state-unknown .component-state { color: var(--muted); }
 .component.state-degraded .component-state { color: var(--degraded-text); }
 .component.state-partial_outage .component-state { color: var(--partial-text); }
 .component.state-major_outage .component-state { color: var(--err-text); }
@@ -358,7 +361,7 @@ time.ago.late::after { content: " (late)"; }
 .group[open] > .group-head::before { transform: rotate(45deg); }
 .group-head:hover { background: var(--hover); }
 .group-name { font-weight: 650; font-size: 14.5px; }
-.group-head .state-icon { margin-left: auto; }
+.group-head .group-summary { margin-left: auto; font-size: 13px; }
 .group.state-operational > .group-head .state-icon { background: var(--ok); }
 .group.state-degraded > .group-head .state-icon { background: var(--degraded); }
 .group.state-partial_outage > .group-head .state-icon { background: var(--partial); }
@@ -504,8 +507,8 @@ time.ago.late::after { content: " (late)"; }
   .group-head { padding: 12px 16px; }
   .bars-full { display: none; }
   .bars-recent { display: block; }
-  .legend-edge .d90 { display: none; }
-  .legend-edge .d30 { display: inline; }
+  .bar-legend .d90 { display: none; }
+  .bar-legend .d30 { display: inline; }
   .banner { margin-top: 20px; padding: 12px 16px; font-size: 16px; }
   .page-title { font-size: 21px; }
 }
@@ -834,3 +837,8 @@ fieldset.field legend { font-weight: 600; font-size: 13px; padding: 0 4px; }
 .group.state-degraded .group-summary,
 .group.state-recovered .group-summary { color: var(--degraded-text); }
 .group.state-maintenance .group-summary { color: var(--info-text); }
+
+/* ------------------------------------------------------------ flat public page */
+/* One background colour and thin lines; no floating cards or shadows. */
+body.public { background: var(--surface); --shadow: none; }
+.svc-card .component-desc { margin-top: -6px; font-size: 12px; white-space: normal; }
