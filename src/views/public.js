@@ -1,7 +1,7 @@
 import { html, multiline } from '../lib/html.js';
 import { formatDateTime, formatDay, relativeTime, lastDays, dayKey } from '../lib/time.js';
 import { OVERALL_LABELS, COMPONENT_STATES, formatUptime } from '../status.js';
-import { publicLayout, stateIcon, ago } from './layout.js';
+import { publicLayout, stateIcon, ago, historySvg } from './layout.js';
 
 const STATUS_LABEL = { investigating: 'Investigating', identified: 'Identified', monitoring: 'Monitoring', resolved: 'Resolved' };
 const IMPACT_CLASS = { none: 'impact-none', minor: 'impact-minor', major: 'impact-major', critical: 'impact-critical' };
@@ -45,11 +45,11 @@ function dayDetail(d) {
 
 function bar(component) {
   const n = component.days.length;
-  return html`<div class="bars" role="img" aria-label="${component.name}: ${n}-day history${component.uptimeLabel ? `, ${component.uptimeLabel} uptime` : ''}">
-    ${component.days.map(
-      (d, i) => html`<span class="bar bar-${d.state}${i < n - 30 ? ' bar-old' : ''}" data-day="${JSON.stringify(dayDetail(d))}"></span>`,
-    )}
-  </div>`;
+  const label = `${component.name}: ${n}-day history${component.uptimeLabel ? `, ${component.uptimeLabel} uptime` : ''}`;
+  const attrs = (d) => html` data-day="${JSON.stringify(dayDetail(d))}"`;
+  if (n <= 30) return historySvg(component.days, { label, attrs });
+  // Phones get the last 30 days only; a separate SVG keeps those bars as wide as possible.
+  return html`${historySvg(component.days, { label, attrs, cls: 'bars-full' })}${historySvg(component.days.slice(-30), { label, attrs, cls: 'bars-recent' })}`;
 }
 
 function componentCell(c, display) {

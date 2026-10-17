@@ -287,25 +287,24 @@ time.ago.late::after { content: " (late)"; }
 .component.state-maintenance .state-icon { background: var(--maintenance); }
 .component.state-unknown .state-icon { background: var(--unknown-icon); }
 
+/* History bars are SVG rects (see historySvg in src/views/layout.js), so they're coloured with fill. */
 .bars {
-  display: flex;
-  gap: 2px;
+  display: block;
+  width: 100%;
   height: 34px;
 }
 .bar {
-  flex: 1 1 0;
-  min-width: 0;
-  border-radius: 1px;
-  background: var(--nodata);
+  fill: var(--nodata);
   transition: opacity 0.1s;
 }
 .bar:hover { opacity: 0.7; }
-.bar-operational { background: var(--ok-bar); }
-.bar-degraded { background: var(--degraded); }
-.bar-partial_outage { background: var(--partial); }
-.bar-major_outage { background: var(--major); }
-.bar-maintenance { background: var(--maint-bar); }
-.bar-nodata { background: var(--nodata); }
+.bar-operational { fill: var(--ok-bar); }
+.bar-degraded { fill: var(--degraded); }
+.bar-partial_outage { fill: var(--partial); }
+.bar-major_outage { fill: var(--major); }
+.bar-maintenance { fill: var(--maint-bar); }
+.bar-nodata { fill: var(--nodata); }
+.bars-recent { display: none; }
 .bars-admin { height: 40px; margin-top: 8px; }
 
 .bar-legend {
@@ -506,7 +505,8 @@ time.ago.late::after { content: " (late)"; }
 }
 @media (max-width: 600px) {
   .group-head { padding: 12px 16px; }
-  .bar-old { display: none; }
+  .bars-full { display: none; }
+  .bars-recent { display: block; }
   .legend-edge .d90 { display: none; }
   .legend-edge .d30 { display: inline; }
   .banner { font-size: 16px; padding: 12px 16px; }
@@ -754,7 +754,7 @@ fieldset.field legend { font-weight: 600; font-size: 13px; padding: 0 4px; }
 }
 .row:first-child { border-top: 0; }
 .rows.no-uptime .row { grid-template-columns: 10px minmax(0, 1fr) minmax(0, 50%); }
-.row .bars { height: 22px; gap: 1px; }
+.row .bars { height: 22px; }
 .row-name { display: flex; align-items: center; gap: 6px; min-width: 0; flex-wrap: wrap; }
 .row-name .component-name { font-size: 14px; }
 .row-state { font-size: 12px; color: var(--muted); }

@@ -7,6 +7,7 @@
 - **Automatic incidents** (opt-in per monitor): opens a public incident after a monitor has been down for a set number of minutes, and resolves it when it's back
 - **Status badges** at `/badge.svg` and `/badge/<id>.svg`, with snippets on the component and settings pages
 - Database migration 4 runs automatically on start. Existing monitors and history are kept
+- Fixed: the history bars could come out in two different widths (2 px and 3 px) depending on the screen size. They're now drawn as SVG, so every day is the same width
 
 ## 1.2.9
 

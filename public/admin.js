@@ -46,9 +46,4 @@
       });
     });
   });
-
-  // Native tooltips for admin history bars.
-  Array.prototype.forEach.call(document.querySelectorAll('.bars-admin [data-tip]'), function (el) {
-    el.title = el.getAttribute('data-tip');
-  });
 })();

@@ -1,7 +1,7 @@
 import { html, multiline } from '../lib/html.js';
 import { formatDateTime, formatTime, relativeTime, tsToLocalInput, formatDuration, formatDay } from '../lib/time.js';
 import { formatUptime, COMPONENT_STATES, INCIDENT_STATUSES, INCIDENT_IMPACTS } from '../status.js';
-import { adminLayout, VERSION, ago } from './layout.js';
+import { adminLayout, VERSION, ago, historySvg } from './layout.js';
 import { config } from '../config.js';
 import { DNS_RECORD_TYPES, heartbeatGraceMs } from '../monitor/probes.js';
 
@@ -301,9 +301,11 @@ export function monitorDetailPage(ctx, { monitor: m, component, checks, uptime, 
     ${m.type === 'push' ? heartbeatCard(ctx, m) : ''}
     <div class="card">
       <h2>90 days</h2>
-      <div class="bars bars-admin">${history.days.map(
-        (d) => html`<span class="bar bar-${d.state}" data-tip="${formatDay(d.day)}\n${d.uptime != null ? `${formatUptime(d.uptime)} uptime · ${d.checks} checks · ${d.down} failed` : 'No data'}"></span>`,
-      )}</div>
+      ${historySvg(history.days, {
+        label: `${m.name}: 90-day history`,
+        cls: 'bars-admin',
+        inner: (d) => html`<title>${formatDay(d.day)}: ${d.uptime != null ? `${formatUptime(d.uptime)} uptime, ${d.checks} checks, ${d.down} failed` : 'no data'}</title>`,
+      })}
     </div>
     <div class="card">
       <h2>Recent checks</h2>

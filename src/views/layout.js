@@ -31,6 +31,18 @@ export function ago(ts, prefix = '', lateAfterMs = null) {
   return html`<time class="ago${late ? ' late' : ''}" datetime="${new Date(ts).toISOString()}" data-prefix="${prefix}"${lateAfterMs ? html` data-late-after="${lateAfterMs}"` : ''} title="${formatDateTime(ts)}">${prefix}${relativeTime(ts)}</time>`;
 }
 
+/**
+ * Day-by-day history as an SVG. The viewBox is stretched to the available width, so every bar
+ * ends up exactly the same size (flex boxes get rounded to whole pixels, some 2 px and some 3 px).
+ * `attrs(d)` adds attributes to a bar, `inner(d)` adds content inside it (e.g. a <title>).
+ */
+export function historySvg(days, { label, cls = '', attrs = () => '', inner = () => '' }) {
+  const n = days.length;
+  return html`<svg class="bars${cls ? ` ${cls}` : ''}" viewBox="0 0 ${n * 5 - 2} 34" preserveAspectRatio="none" role="img" aria-label="${label}">${days.map(
+    (d, i) => html`<rect class="bar bar-${d.state}" x="${i * 5}" width="3" height="34"${attrs(d)}>${inner(d)}</rect>`,
+  )}</svg>`;
+}
+
 export function stateIcon(state) {
   switch (state) {
     case 'operational':
