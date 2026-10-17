@@ -2,6 +2,8 @@
 
 ## 1.3.0
 
+- **New look for the public page**: a solid header bar instead of the fading band behind the logo, the overall status as a card with a summary ("1 of 4 services affected · updated 12s ago"), rounder cards and calmer headings
+- New colour palette for light and dark mode, also used in the admin area
 - **Heartbeat monitors**: a backup script or cron job calls a secret URL when it finishes, and the monitor goes down if the call doesn't come. Supports reporting failures (`?status=down&msg=...`) and the job's duration (`?ms=...`)
 - **DNS checks**: A, AAAA, CNAME, MX, NS and TXT records, with an optional expected answer and DNS server
 - **Automatic incidents** (opt-in per monitor): opens a public incident after a monitor has been down for a set number of minutes, and resolves it when it's back

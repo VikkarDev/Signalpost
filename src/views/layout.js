@@ -89,8 +89,8 @@ export function publicLayout({ title, siteName, body, live = false, description 
 ${description ? html`<meta name="description" content="${description}">` : ''}
 ${live ? raw('<noscript><meta http-equiv="refresh" content="60"></noscript>') : ''}
 <meta name="color-scheme" content="light dark">
-<meta name="theme-color" content="#f6f8fa" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#14161a" media="(prefers-color-scheme: dark)">
 ${logoVersion
   ? html`<link rel="icon" href="/logo?v=${logoVersion}">`
   : html`<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">`}
@@ -101,9 +101,8 @@ ${logoVersion
 <script src="${asset('ago.js')}" defer></script>
 </head>
 <body class="public"${live ? html` data-live="30"` : ''}>
-<header class="hero">
-  <div class="hero-art" aria-hidden="true"></div>
-  <div class="container hero-inner">
+<header class="site-header">
+  <div class="container header-inner">
     <a class="brand" href="/">${logoVersion ? html`<img class="logo-img" src="/logo?v=${logoVersion}" alt="" width="28" height="28">` : logo}<span>${siteName}</span></a>
     ${themeToggle}
   </div>

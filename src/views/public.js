@@ -229,10 +229,17 @@ export function statusPage(data, past) {
   const bannerState = overall === 'none' || overall === 'unknown' ? 'unknown' : overall;
   const pastDays = lastDays(7).reverse();
 
+  const n = data.components.length;
+  const affected = data.components.filter((c) => c.liveState !== 'operational' && c.liveState !== 'unknown').length;
+  const summary = !n ? '' : affected ? `${affected} of ${n} ${n === 1 ? 'service' : 'services'} affected` : `${n} ${n === 1 ? 'service' : 'services'}`;
+
   const body = html`
   <div class="banner banner-${bannerState}" role="status">
     <span class="banner-icon">${stateIcon(bannerState)}</span>
-    <span>${OVERALL_LABELS[overall]}</span>
+    <div>
+      <p class="banner-title">${OVERALL_LABELS[overall]}</p>
+      <div class="banner-sub">${summary ? `${summary} · ` : ''}updated ${ago(data.generatedAt)}</div>
+    </div>
   </div>
 
   ${data.activeIncidents.length
@@ -275,8 +282,7 @@ export function statusPage(data, past) {
             : '';
         })
       : html`<p class="muted">No incidents in the past 7 days.</p>`}
-  </section>
-  <p class="muted small updated">Updated ${ago(data.generatedAt)}</p>`;
+  </section>`;
 
   return publicLayout({
     title: `${data.siteName}`,
