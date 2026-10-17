@@ -1,7 +1,8 @@
 import { html, raw } from '../lib/html.js';
 import { branding } from '../branding.js';
+import { relativeTime, formatDateTime } from '../lib/time.js';
 
-export const VERSION = '1.2.6';
+export const VERSION = '1.2.7';
 
 export const icons = {
   check: raw('<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 1 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/></svg>'),
@@ -19,6 +20,12 @@ export const logo = raw(`<svg class="logo-mark" viewBox="0 0 32 32" width="28" h
 
 // Rendered hidden; theme.js reveals it and fills in the current mode (no-JS visitors just get "auto").
 const themeToggle = raw('<button type="button" class="theme-toggle" hidden>Theme</button>');
+
+/** A relative time that keeps counting up in the browser (public/ago.js). */
+export function ago(ts, prefix = '') {
+  if (!ts) return html`${prefix}never`;
+  return html`<time class="ago" datetime="${new Date(ts).toISOString()}" data-prefix="${prefix}" title="${formatDateTime(ts)}">${prefix}${relativeTime(ts)}</time>`;
+}
 
 export function stateIcon(state) {
   switch (state) {
@@ -57,6 +64,7 @@ ${logoVersion
 <script src="/static/theme.js?v=${VERSION}"></script>
 <link rel="stylesheet" href="/static/style.css?v=${VERSION}">
 <script src="/static/app.js?v=${VERSION}" defer></script>
+<script src="/static/ago.js?v=${VERSION}" defer></script>
 </head>
 <body class="public"${live ? html` data-live="30"` : ''}>
 <header class="hero">
@@ -66,7 +74,7 @@ ${logoVersion
     ${themeToggle}
   </div>
 </header>
-<main class="container">
+<main class="container" data-now="${Date.now()}">
 ${body}
 </main>
 <footer class="container site-footer">
@@ -103,6 +111,7 @@ export function adminLayout({ title, body, user, csrf, active, flash }) {
 <script src="/static/theme.js?v=${VERSION}"></script>
 <link rel="stylesheet" href="/static/style.css?v=${VERSION}">
 <script src="/static/admin.js?v=${VERSION}" defer></script>
+<script src="/static/ago.js?v=${VERSION}" defer></script>
 </head>
 <body class="admin">
 <header class="admin-bar">
@@ -125,7 +134,7 @@ export function adminLayout({ title, body, user, csrf, active, flash }) {
       : ''}
   </div>
 </header>
-<main class="admin-container admin-main">
+<main class="admin-container admin-main" data-now="${Date.now()}">
 ${flash ? html`<div class="flash flash-${flash.type}" role="status">${flash.text}</div>` : ''}
 ${body}
 </main>

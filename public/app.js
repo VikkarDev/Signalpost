@@ -75,6 +75,8 @@
         if (!next || !current) return;
         var states = groupStates();
         current.innerHTML = next.innerHTML;
+        if (next.hasAttribute('data-now')) current.setAttribute('data-now', next.getAttribute('data-now'));
+        if (window.signalpostTick) window.signalpostTick();
         Array.prototype.forEach.call(current.querySelectorAll('details[data-group]'), function (d) {
           var name = d.getAttribute('data-group');
           if (Object.prototype.hasOwnProperty.call(states, name)) d.open = states[name];

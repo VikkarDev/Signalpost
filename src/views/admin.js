@@ -1,7 +1,7 @@
 import { html, multiline } from '../lib/html.js';
 import { formatDateTime, formatTime, relativeTime, tsToLocalInput, formatDuration, formatDay } from '../lib/time.js';
 import { formatUptime, COMPONENT_STATES, INCIDENT_STATUSES, INCIDENT_IMPACTS } from '../status.js';
-import { adminLayout, VERSION } from './layout.js';
+import { adminLayout, VERSION, ago } from './layout.js';
 import { config } from '../config.js';
 
 const csrfField = (csrf) => html`<input type="hidden" name="_csrf" value="${csrf}">`;
@@ -89,7 +89,7 @@ export function dashboardPage(ctx, { components, unassigned, canaries, totals })
     <td class="c-meta">${SCOPE_LABEL[m.scope]} ${m.type.toUpperCase()}</td>
     <td class="c-state">${m.enabled ? stateBadge(m.state) : html`<span class="badge">Off</span>`}</td>
     <td class="num c-meta">${m.last_response_ms != null ? `${m.last_response_ms} ms` : ''}</td>
-    <td class="c-meta">${m.last_check_at ? relativeTime(m.last_check_at) : ''}</td>
+    <td class="c-meta">${m.last_check_at ? ago(m.last_check_at) : ''}</td>
     <td class="num c-meta c-labelled">${pct(m.uptime24h)}</td>
     <td class="num c-hide">${pct(m.uptime30d)}</td>
     <td class="err c-full">${m.state === 'down' || m.state === 'degraded' ? m.last_error : ''}</td>
@@ -241,8 +241,8 @@ export function monitorDetailPage(ctx, { monitor: m, component, checks, uptime, 
         <dt>Target</dt><dd class="mono">${m.type === 'tcp' ? `${m.target}:${m.port}` : m.target}</dd>
         <dt>Check</dt><dd>${SCOPE_LABEL[m.scope]} ${m.type.toUpperCase()}, every ${formatDuration(m.interval_s * 1000)}, ${m.timeout_ms / 1000}s timeout</dd>
         <dt>Component</dt><dd>${component ? html`<a href="/admin/components/${component.id}">${component.name}</a>` : '—'}</dd>
-        <dt>State since</dt><dd>${m.state_since ? html`${formatDateTime(m.state_since)} (${relativeTime(m.state_since)})` : '—'}</dd>
-        <dt>Last check</dt><dd>${m.last_check_at ? html`${relativeTime(m.last_check_at)}${m.last_response_ms != null ? `, ${m.last_response_ms} ms` : ''}${m.last_status_code ? `, HTTP ${m.last_status_code}` : ''}` : 'never'}</dd>
+        <dt>State since</dt><dd>${m.state_since ? html`${formatDateTime(m.state_since)} (${ago(m.state_since)})` : '—'}</dd>
+        <dt>Last check</dt><dd>${m.last_check_at ? html`${ago(m.last_check_at)}${m.last_response_ms != null ? `, ${m.last_response_ms} ms` : ''}${m.last_status_code ? `, HTTP ${m.last_status_code}` : ''}` : 'never'}</dd>
         ${m.last_error ? html`<dt>Last error</dt><dd class="err">${m.last_error}</dd>` : ''}
         ${m.tls_expires_at ? html`<dt>TLS certificate</dt><dd>expires ${formatDateTime(m.tls_expires_at)}</dd>` : ''}
         <dt>Uptime</dt><dd class="uptimes"><span>24h ${pct(uptime.d1)}</span><span>7d ${pct(uptime.d7)}</span><span>30d ${pct(uptime.d30)}</span><span>90d ${pct(uptime.d90)}</span></dd>
@@ -482,7 +482,7 @@ export function alertsPage(ctx, { rules, smtpOk, recent }) {
         (r) => html`<tr class="${r.enabled ? '' : 'disabled'}"><td><a href="/admin/alerts/${r.id}">${r.name}</a>${r.enabled ? '' : html` <span class="pill">disabled</span>`}</td>
         <td>${r.channel === 'discord' ? 'Discord' : 'Email'}</td>
         <td class="small">${[r.on_down && 'down', r.on_recovery && 'recovery', r.on_degraded && 'degraded', r.on_incident && 'incidents', r.on_maintenance && 'maintenance', r.on_tls_expiry && 'TLS expiry'].filter(Boolean).join(', ')}${r.repeat_minutes ? ` · repeat ${r.repeat_minutes} min` : ''}</td>
-        <td>${r.last_sent_at ? relativeTime(r.last_sent_at) : '—'}${r.last_error ? html`<div class="err small">${r.last_error}</div>` : ''}</td>
+        <td>${r.last_sent_at ? ago(r.last_sent_at) : '—'}${r.last_error ? html`<div class="err small">${r.last_error}</div>` : ''}</td>
         <td class="row-actions">${postButton({ action: `/admin/alerts/${r.id}/test`, csrf: ctx.csrf, label: 'Send test', cls: 'link-button' })}</td></tr>`,
       )}</tbody></table></div>`
       : html`<div class="card"><p>No alert rules yet.</p></div>`}

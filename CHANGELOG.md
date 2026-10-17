@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.7
+
+- "checked 12s ago" and "Updated ..." count up live in the browser, every second, without extra requests. Uses the server's clock, so a wrong clock on the visitor's device doesn't matter. Hover for the exact time.
+- Same for the "Checked", "Last check" and "Last sent" times in the admin area
+
 ## 1.2.6
 
 - Status icons show recent trouble: a service that's up again but failed within the last few hours shows a yellow "Recovered" icon instead of a green check (Settings -> Display, default 3 hours, can be turned off)

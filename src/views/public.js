@@ -1,7 +1,7 @@
 import { html, multiline } from '../lib/html.js';
 import { formatDateTime, formatDay, relativeTime, lastDays, dayKey } from '../lib/time.js';
 import { OVERALL_LABELS, COMPONENT_STATES, formatUptime } from '../status.js';
-import { publicLayout, stateIcon } from './layout.js';
+import { publicLayout, stateIcon, ago } from './layout.js';
 
 const STATUS_LABEL = { investigating: 'Investigating', identified: 'Identified', monitoring: 'Monitoring', resolved: 'Resolved' };
 const IMPACT_CLASS = { none: 'impact-none', minor: 'impact-minor', major: 'impact-major', critical: 'impact-critical' };
@@ -49,7 +49,7 @@ function componentCell(c, display) {
     <div class="component-meta">
       <span class="component-state">${c.stateLabel}</span>
       ${c.lastCheckAt || c.responseMs != null
-        ? html`<span class="muted">${[c.responseMs != null ? `${c.responseMs} ms` : null, c.lastCheckAt ? `checked ${relativeTime(c.lastCheckAt)}` : null].filter(Boolean).join(' · ')}</span>`
+        ? html`<span class="muted">${c.responseMs != null ? `${c.responseMs} ms` : ''}${c.responseMs != null && c.lastCheckAt ? ' · ' : ''}${c.lastCheckAt ? ago(c.lastCheckAt, 'checked ') : ''}</span>`
         : ''}
     </div>
   </div>`;
@@ -141,7 +141,7 @@ function componentCard(c, display) {
     ${display.showResponseTime ? sparkline(c.series) : bar({ ...c, days: c.days.slice(-30) })}
     <div class="svc-foot muted small">
       <span>${display.showResponseTime ? 'Last 24 hours' : 'Last 30 days'}</span>
-      ${c.lastCheckAt ? html`<span>checked ${relativeTime(c.lastCheckAt)}</span>` : ''}
+      ${c.lastCheckAt ? html`<span>${ago(c.lastCheckAt, 'checked ')}</span>` : ''}
     </div>
   </div>`;
 }
@@ -253,7 +253,7 @@ export function statusPage(data, past) {
         })
       : html`<p class="muted">No incidents in the past 7 days.</p>`}
   </section>
-  <p class="muted small updated">Updated ${formatDateTime(data.generatedAt)}</p>`;
+  <p class="muted small updated">Updated ${ago(data.generatedAt)}</p>`;
 
   return publicLayout({
     title: `${data.siteName}`,
