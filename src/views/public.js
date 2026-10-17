@@ -49,7 +49,7 @@ function componentCell(c, display) {
     <div class="component-meta">
       <span class="component-state">${c.stateLabel}</span>
       ${c.lastCheckAt || c.responseMs != null
-        ? html`<span class="muted">${c.responseMs != null ? `${c.responseMs} ms` : ''}${c.responseMs != null && c.lastCheckAt ? ' · ' : ''}${c.lastCheckAt ? ago(c.lastCheckAt, 'checked ') : ''}</span>`
+        ? html`<span class="muted">${c.responseMs != null ? `${c.responseMs} ms` : ''}${c.responseMs != null && c.lastCheckAt ? ' · ' : ''}${c.lastCheckAt ? ago(c.lastCheckAt, 'checked ', c.lateAfterMs) : ''}</span>`
         : ''}
     </div>
   </div>`;
@@ -141,7 +141,7 @@ function componentCard(c, display) {
     ${display.showResponseTime ? sparkline(c.series) : bar({ ...c, days: c.days.slice(-30) })}
     <div class="svc-foot muted small">
       <span>${display.showResponseTime ? 'Last 24 hours' : 'Last 30 days'}</span>
-      ${c.lastCheckAt ? html`<span>${ago(c.lastCheckAt, 'checked ')}</span>` : ''}
+      ${c.lastCheckAt ? html`<span>${ago(c.lastCheckAt, 'checked ', c.lateAfterMs)}</span>` : ''}
     </div>
   </div>`;
 }

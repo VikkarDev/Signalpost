@@ -334,6 +334,8 @@ export function publicStatus(now = Date.now()) {
       days: history.days,
       responseMs: opts.showResponseTime && primary ? primary.last_response_ms : null,
       lastCheckAt: opts.showLastChecked ? nonCanary.reduce((acc, m) => Math.max(acc, m.last_check_at || 0), 0) || null : null,
+      // If no check has landed in this long, the monitor is probably stuck; the page marks the time as late.
+      lateAfterMs: nonCanary.length ? Math.max(...nonCanary.map((m) => m.interval_s * 2000 + m.timeout_ms)) + 30000 : null,
       series: opts.layout === 'cards' && opts.showResponseTime && primary ? responseSeries(primary.id, now) : null,
     };
   });

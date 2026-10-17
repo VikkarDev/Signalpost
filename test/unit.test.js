@@ -5,6 +5,7 @@ import { parseExpectedStatus } from '../src/monitor/probes.js';
 import { liveComponentState, diagnose, formatUptime } from '../src/status.js';
 import { html, raw } from '../src/lib/html.js';
 import { DISCORD_WEBHOOK_RE, parseEmails } from '../src/notify/index.js';
+import { ago } from '../src/views/layout.js';
 
 test('timezone conversion round-trips, including DST', () => {
   const tz = 'Europe/Stockholm';
@@ -78,4 +79,12 @@ test('alert target validation', () => {
   assert.ok(!DISCORD_WEBHOOK_RE.test('https://evil.example/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyz'));
   assert.deepEqual(parseEmails('a@b.se, c@d.com').bad, []);
   assert.equal(parseEmails('not-an-email').bad.length, 1);
+});
+
+test('check times are flagged late once a check is overdue', () => {
+  const fresh = String(ago(Date.now() - 30000, 'checked ', 150000));
+  assert.match(fresh, /class="ago"/);
+  assert.match(fresh, /data-late-after="150000"/);
+  assert.match(String(ago(Date.now() - 600000, 'checked ', 150000)), /class="ago late"/);
+  assert.doesNotMatch(String(ago(Date.now() - 600000)), /late/);
 });

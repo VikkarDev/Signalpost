@@ -4,6 +4,7 @@
 
 - "checked 12s ago" and "Updated ..." count up live in the browser, every second, without extra requests. Uses the server's clock, so a wrong clock on the visitor's device doesn't matter. Hover for the exact time.
 - Same for the "Checked", "Last check" and "Last sent" times in the admin area
+- If a monitor misses its checks (more than two intervals with no result), the time turns yellow and says "(late)", so a stuck monitor doesn't sit there looking green
 
 ## 1.2.6
 

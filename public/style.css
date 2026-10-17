@@ -162,6 +162,9 @@ a:hover { text-decoration: underline; }
 code, .mono { font-family: var(--mono); font-size: 12px; }
 code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
 .muted { color: var(--muted); }
+/* A check that should have run by now (see public/ago.js). */
+time.ago.late { color: var(--degraded-text); font-weight: 600; }
+time.ago.late::after { content: " (late)"; }
 .small { font-size: 12px; }
 .inline { display: inline; }
 [hidden] { display: none !important; }

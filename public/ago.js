@@ -1,5 +1,5 @@
 // Keeps "checked 12s ago" style times ticking in the browser.
-// Elements: <time class="ago" datetime="ISO" data-prefix="checked ">.
+// Elements: <time class="ago" datetime="ISO" data-prefix="checked " data-late-after="ms">.
 // The server's clock comes from data-now on <main>, so a wrong local clock doesn't matter.
 (function () {
   'use strict';
@@ -29,6 +29,9 @@
       if (!t) return;
       var text = (el.getAttribute('data-prefix') || '') + format(now - t);
       if (el.textContent !== text) el.textContent = text;
+      // A check that should have happened by now but didn't: the monitor may be stuck.
+      var lateAfter = Number(el.getAttribute('data-late-after'));
+      if (lateAfter) el.classList.toggle('late', now - t > lateAfter);
     });
   }
 

@@ -89,7 +89,7 @@ export function dashboardPage(ctx, { components, unassigned, canaries, totals })
     <td class="c-meta">${SCOPE_LABEL[m.scope]} ${m.type.toUpperCase()}</td>
     <td class="c-state">${m.enabled ? stateBadge(m.state) : html`<span class="badge">Off</span>`}</td>
     <td class="num c-meta">${m.last_response_ms != null ? `${m.last_response_ms} ms` : ''}</td>
-    <td class="c-meta">${m.last_check_at ? ago(m.last_check_at) : ''}</td>
+    <td class="c-meta">${m.last_check_at ? ago(m.last_check_at, '', m.enabled ? m.interval_s * 2000 + m.timeout_ms + 30000 : null) : ''}</td>
     <td class="num c-meta c-labelled">${pct(m.uptime24h)}</td>
     <td class="num c-hide">${pct(m.uptime30d)}</td>
     <td class="err c-full">${m.state === 'down' || m.state === 'degraded' ? m.last_error : ''}</td>

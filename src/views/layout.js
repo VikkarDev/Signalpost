@@ -21,10 +21,14 @@ export const logo = raw(`<svg class="logo-mark" viewBox="0 0 32 32" width="28" h
 // Rendered hidden; theme.js reveals it and fills in the current mode (no-JS visitors just get "auto").
 const themeToggle = raw('<button type="button" class="theme-toggle" hidden>Theme</button>');
 
-/** A relative time that keeps counting up in the browser (public/ago.js). */
-export function ago(ts, prefix = '') {
+/**
+ * A relative time that keeps counting up in the browser (public/ago.js).
+ * With lateAfterMs, the time is flagged once it gets older than that (a check that never came).
+ */
+export function ago(ts, prefix = '', lateAfterMs = null) {
   if (!ts) return html`${prefix}never`;
-  return html`<time class="ago" datetime="${new Date(ts).toISOString()}" data-prefix="${prefix}" title="${formatDateTime(ts)}">${prefix}${relativeTime(ts)}</time>`;
+  const late = lateAfterMs && Date.now() - ts > lateAfterMs;
+  return html`<time class="ago${late ? ' late' : ''}" datetime="${new Date(ts).toISOString()}" data-prefix="${prefix}"${lateAfterMs ? html` data-late-after="${lateAfterMs}"` : ''} title="${formatDateTime(ts)}">${prefix}${relativeTime(ts)}</time>`;
 }
 
 export function stateIcon(state) {
