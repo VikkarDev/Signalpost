@@ -6,6 +6,7 @@ import { sendHtml, sendJson, HttpError } from '../lib/http.js';
 import { publicStatus, pastIncidents, incidentUpdates, incidentComponentNames, OVERALL_LABELS } from '../status.js';
 import { statusPage, incidentPage, historyPage } from '../views/public.js';
 import { scheduler } from '../monitor/engine.js';
+import { stateBadge, uptimeBadge } from '../badge.js';
 
 export function registerPublic(router) {
   router.get('/', (ctx) => {
@@ -142,6 +143,56 @@ ${entries
       'Cross-Origin-Resource-Policy': 'cross-origin',
     });
     ctx.res.end(ctx.req.method === 'HEAD' ? undefined : logo.body);
+  });
+
+  // Heartbeats from cron jobs, backup scripts and the like. The token in the URL is the only credential.
+  //   curl -fsS https://status.example.com/api/push/<token>
+  //   ...?status=down&msg=Backup%20failed   reports a failure instead
+  //   ...?ms=1234                           optional duration, counted against the "slow" threshold
+  const push = async (ctx) => {
+    const token = /^[a-f0-9]{32}$/.test(ctx.params.token) ? ctx.params.token : null;
+    const m = token ? get(`SELECT * FROM monitors WHERE push_token = ? AND type = 'push'`, token) : null;
+    if (!m) throw new HttpError(404, 'Unknown heartbeat URL');
+    if (!m.enabled) throw new HttpError(409, 'This monitor is paused');
+    const failed = ctx.query.get('status') === 'down';
+    const ms = Number.parseInt(ctx.query.get('ms') || '', 10);
+    const msg = (ctx.query.get('msg') || '').replace(/[\x00-\x1f\x7f]/g, ' ').trim().slice(0, 200);
+    await scheduler.recordPush(m, {
+      ok: !failed,
+      responseMs: Number.isInteger(ms) && ms >= 0 && ms <= 86400000 ? ms : null,
+      error: failed ? `Reported down${msg ? `: ${msg}` : ''}` : null,
+    });
+    sendJson(ctx.res, 200, { ok: true });
+  };
+  router.get('/api/push/:token', push);
+  router.post('/api/push/:token', push);
+
+  // Status badges: /badge.svg for the whole page, /badge/<component id>.svg for one service.
+  //   ?uptime=1 shows the uptime % instead of the state, ?label=... changes the left side.
+  const sendBadge = (ctx, svg) => {
+    const buf = Buffer.from(svg, 'utf8');
+    ctx.res.writeHead(200, {
+      'Content-Type': 'image/svg+xml; charset=utf-8',
+      'Content-Length': buf.length,
+      'Cache-Control': 'no-cache, max-age=0',
+      'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+      'Cross-Origin-Resource-Policy': 'cross-origin',
+    });
+    ctx.res.end(ctx.req.method === 'HEAD' ? undefined : buf);
+  };
+  const badgeLabel = (ctx, fallback) => (ctx.query.get('label') || fallback).slice(0, 40);
+
+  router.get('/badge.svg', (ctx) => {
+    const d = publicStatus();
+    sendBadge(ctx, stateBadge(badgeLabel(ctx, 'status'), d.overall));
+  });
+
+  router.get('/badge/:file', (ctx) => {
+    const id = /^(\d+)\.svg$/.exec(ctx.params.file)?.[1];
+    const c = id ? publicStatus().components.find((x) => x.id === Number(id)) : null;
+    if (!c) throw new HttpError(404, 'No such service');
+    const label = badgeLabel(ctx, c.name);
+    sendBadge(ctx, ctx.query.get('uptime') === '1' ? uptimeBadge(label, c.uptime, c.uptimeLabel ? `${c.uptimeLabel} uptime` : '') : stateBadge(label, c.liveState));
   });
 
   // Container health check: process up, DB answering, scheduler not stopped.

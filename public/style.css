@@ -161,6 +161,8 @@ a { color: var(--link); text-decoration: none; }
 a:hover { text-decoration: underline; }
 code, .mono { font-family: var(--mono); font-size: 12px; }
 code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+.snippet { margin: 8px 0; padding: 10px 12px; overflow-x: auto; border-radius: var(--radius); background: var(--code-bg); }
+.snippet code { padding: 0; background: none; white-space: pre; }
 .muted { color: var(--muted); }
 /* A check that should have run by now (see public/ago.js). */
 time.ago.late { color: var(--degraded-text); font-weight: 600; }

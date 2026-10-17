@@ -16,11 +16,12 @@ I built it to run on a Synology NAS behind Cloudflare Tunnel, but it runs anywhe
 - A service that failed recently shows as "Recovered" for a while instead of plain green, and a monitor that stops reporting gets its time marked "(late)", so the page never looks fine just because nothing is being checked.
 - Group related services into collapsible sections, upload your own logo, and add footer links.
 - Light and dark theme (follows your system, or pick one), and both the status page and the admin area work on phones.
-- HTTP(S), TCP and ping checks. Configurable interval, timeout, expected status codes, keyword match, "slow" threshold and how many failures in a row count as down.
+- HTTP(S), TCP, ping and DNS checks, plus heartbeat monitors for backups and cron jobs. Configurable interval, timeout, expected status codes, keyword match, "slow" threshold and how many failures in a row count as down.
 - Separate **internal**, **public** and **canary** checks, so you can tell "the app is down" apart from "the tunnel/DNS/internet is down" (more below).
 - Incidents with a public timeline, and maintenance windows that pause alerts and don't count against uptime.
 - Alerts to Discord, your phone (via [ntfy](https://ntfy.sh)), any JSON webhook and email, with rules per event type, per service and optional reminders while something stays down. Also warns before TLS certificates expire.
-- RSS/Atom feed of incidents and maintenance at `/feed.xml`, and a read-only JSON API at `/api/v1/status`.
+- Optional automatic incidents: a monitor that stays down opens a public incident and closes it again when it's back.
+- Status badges for your README or website, RSS/Atom feed of incidents and maintenance at `/feed.xml`, and a read-only JSON API at `/api/v1/status`.
 - Small footprint: about 30-60 MB RAM, a single dependency (nodemailer), Node 24's built-in SQLite.
 
 ### Layouts
@@ -127,7 +128,7 @@ services:
   signalpost:
     build:
       context: .
-    image: signalpost:1.2.9
+    image: signalpost:1.3.0
     container_name: signalpost
     restart: unless-stopped
     init: true
@@ -193,6 +194,36 @@ Defaults that work well: 60 s interval, 10 s timeout, 2 failures before down.
 To group services on the public page, give components the same **Group** name (e.g. "Home apps"). Your logo and footer links are under **Settings**.
 
 To follow incidents in Discord without alert rules, point any RSS bot at `https://your-status-page/feed.xml`.
+
+### Heartbeat monitors (backups, cron jobs)
+
+Some things can't be checked from outside, like "did last night's backup run?". For those, add a monitor with the check type **Heartbeat**, set the interval to how often the job runs (86400 for daily), and save. The monitor page then shows a secret URL. Call it at the end of the job:
+
+```sh
+curl -fsS -m 10 https://status.example.com/api/push/<token>
+```
+
+If no call arrives within the interval (plus 10%, at least a minute), the monitor goes down and your alerts fire. To report a failure yourself, add `?status=down&msg=Backup%20failed`. `&ms=1234` records how long the job took, and counts against the "slow" threshold if you set one.
+
+On a Synology, Hyper Backup can't call a URL by itself, but a scheduled task (Control Panel → Task Scheduler → User-defined script) after the backup window can, e.g. `curl -fsS https://status.example.com/api/push/<token>`.
+
+Anyone who has the URL can report for that monitor, so treat it like a password. **Create a new URL** on the monitor page replaces it.
+
+### DNS checks
+
+Check type **DNS record** looks up a name (A, AAAA, CNAME, MX, NS or TXT). Leave **Expected answer** empty to only check that it resolves, or fill in values that must be in the answer, e.g. your server's IP. **DNS server** lets you ask a specific resolver such as `1.1.1.1` instead of the container's.
+
+### Automatic incidents
+
+On any monitor, **Open an incident after (minutes down)** turns this on. Once the monitor has been down that long, Signalpost posts a "Major" incident for its component (or the monitor name if it has none) and notifies your incident alert rules. When the monitor is back up, it posts a "Resolved" update and closes it. You can edit or add updates to the incident as usual. If you resolve it yourself first, it won't open again until the next outage. Maintenance windows don't open incidents.
+
+### Badges
+
+`/badge.svg` shows the overall status, `/badge/<component id>.svg` one service. Add `?uptime=1` for the uptime %, or `?label=...` to change the left side. The snippets are on each component's page and under **Settings**:
+
+```md
+![Status](https://status.example.com/badge.svg)
+```
 
 ### Alerts
 
@@ -310,7 +341,7 @@ Your Docker is too old for the `ping_group_range` sysctl. See the last point und
 - One admin account, no roles or user management.
 - No built-in 2FA. Use Cloudflare Access or similar in front of `/admin`.
 - Visitors can't subscribe to updates.
-- No DNS-record or UDP checks.
+- No UDP checks.
 - History is per day. Uptime counts checks, not minutes. That's the same thing unless you change a monitor's interval.
 - Rate limits and login lockouts are kept in memory and reset on restart. It's meant to run as a single instance.
 - Ping needs Docker to allow the `net.ipv4.ping_group_range` sysctl. That's the default on any recent Docker. On very old versions, remove the `sysctls` line and ping monitors will report "not permitted". HTTP and TCP still work.

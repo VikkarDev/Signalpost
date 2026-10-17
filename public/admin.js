@@ -10,11 +10,17 @@
   var type = document.getElementById('type-select');
   if (type) {
     var groups = {
+      'f-target': ['http', 'tcp', 'ping', 'dns'],
       'f-port': ['tcp'],
       'f-method': ['http'],
       'f-status': ['http'],
       'f-keyword': ['http'],
       'f-http-flags': ['http'],
+      'f-dns-type': ['dns'],
+      'f-dns-expected': ['dns'],
+      'f-dns-server': ['dns'],
+      'f-push-help': ['push'],
+      'f-timeout': ['http', 'tcp', 'ping', 'dns'],
     };
     var sync = function () {
       Object.keys(groups).forEach(function (id) {

@@ -1,4 +1,6 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
+import net from 'node:net';
 import path from 'node:path';
 import { config, smtpConfigured } from '../config.js';
 import { all, get, run, tx, getSetting, setSetting, backupTo } from '../db.js';
@@ -17,7 +19,7 @@ import {
   listSessions,
 } from '../auth.js';
 import { scheduler } from '../monitor/engine.js';
-import { parseExpectedStatus, HOST_RE } from '../monitor/probes.js';
+import { parseExpectedStatus, HOST_RE, DNS_RECORD_TYPES } from '../monitor/probes.js';
 import { liveComponentState, diagnose, monitorUptime, componentHistory, displaySettings, INCIDENT_STATUSES, INCIDENT_IMPACTS } from '../status.js';
 import { notifyIncident, notifyMaintenance, sendTest, validateRuleTarget } from '../notify/index.js';
 import { saveLogo, removeLogo, branding, saveFooterLinks } from '../branding.js';
@@ -35,6 +37,8 @@ const FLASH = {
   posted: ['ok', 'Update posted.'],
   logo: ['ok', 'Logo updated.'],
   logo_removed: ['ok', 'Logo removed.'],
+  push_waiting: ['ok', 'Heartbeat is on time, nothing to record. Checks for this monitor come in through its URL.'],
+  push_token: ['ok', 'New heartbeat URL created. The old one no longer works.'],
 };
 
 // ------------------------------------------------------------------ helpers
@@ -120,7 +124,14 @@ const MONITOR_DEFAULTS = {
   degraded_ms: null,
   failure_threshold: 2,
   enabled: 1,
+  dns_record_type: 'A',
+  dns_server: '',
+  auto_incident_minutes: null,
 };
+
+const MONITOR_TYPES = ['http', 'tcp', 'ping', 'dns', 'push'];
+const DOMAIN_RE = /^(?=.{1,253}\.?$)(?:[A-Za-z0-9_](?:[A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?\.)*[A-Za-z0-9_](?:[A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?\.?$/;
+const newPushToken = () => crypto.randomBytes(16).toString('hex');
 
 function parseMonitor(form) {
   const errs = [];
@@ -141,9 +152,12 @@ function parseMonitor(form) {
     degraded_ms: intOrNull(form, 'degraded_ms'),
     failure_threshold: intOrNull(form, 'failure_threshold'),
     enabled: bool(form, 'enabled') ? 1 : 0,
+    dns_record_type: str(form, 'dns_record_type', 10).toUpperCase() || 'A',
+    dns_server: str(form, 'dns_server', 60),
+    auto_incident_minutes: intOrNull(form, 'auto_incident_minutes'),
   };
   if (!m.name) errs.push('Name is required.');
-  if (!['http', 'tcp', 'ping'].includes(m.type)) errs.push('Choose a check type.');
+  if (!MONITOR_TYPES.includes(m.type)) errs.push('Choose a check type.');
   if (!['internal', 'public', 'canary'].includes(m.scope)) errs.push('Choose a scope.');
   if (m.component_id !== null && !get('SELECT id FROM components WHERE id = ?', m.component_id)) errs.push('Component does not exist.');
   if (m.type === 'http') {
@@ -160,14 +174,35 @@ function parseMonitor(form) {
       errs.push(e.message);
     }
     m.port = null;
+  } else if (m.type === 'dns') {
+    m.target = m.target.toLowerCase();
+    if (!DOMAIN_RE.test(m.target)) errs.push('Target must be a domain name, e.g. example.com.');
+    if (!DNS_RECORD_TYPES.includes(m.dns_record_type)) errs.push('Choose a record type.');
+    if (m.dns_server && !net.isIP(m.dns_server)) errs.push('DNS server must be an IP address, e.g. 1.1.1.1 (or empty for the system resolver).');
+    m.keyword = str(form, 'dns_expected', 500) || null;
+    m.port = null;
+  } else if (m.type === 'push') {
+    m.target = '';
+    m.keyword = null;
+    m.port = null;
   } else {
     if (!HOST_RE.test(m.target) || m.target.startsWith('-')) errs.push('Target must be a host name or IP address (no scheme or path).');
     m.keyword = null;
     if (m.type === 'tcp' && (!Number.isInteger(m.port) || m.port < 1 || m.port > 65535)) errs.push('TCP checks need a port between 1 and 65535.');
     if (m.type === 'ping') m.port = null;
   }
-  if (!Number.isInteger(m.interval_s) || m.interval_s < config.minCheckIntervalSeconds || m.interval_s > 86400) {
-    errs.push(`Interval must be between ${config.minCheckIntervalSeconds} and 86400 seconds.`);
+  if (m.type !== 'dns') {
+    m.dns_record_type = null;
+    m.dns_server = null;
+  }
+  m.dns_server = m.dns_server || null;
+  // Heartbeats can come from weekly jobs; everything else is checked at least daily.
+  const maxInterval = m.type === 'push' ? 31 * 86400 : 86400;
+  if (!Number.isInteger(m.interval_s) || m.interval_s < config.minCheckIntervalSeconds || m.interval_s > maxInterval) {
+    errs.push(`Interval must be between ${config.minCheckIntervalSeconds} and ${maxInterval} seconds.`);
+  }
+  if (m.auto_incident_minutes !== null && (!Number.isInteger(m.auto_incident_minutes) || m.auto_incident_minutes < 1 || m.auto_incident_minutes > 10080)) {
+    errs.push('Automatic incident delay must be 1–10080 minutes, or empty for off.');
   }
   if (!Number.isInteger(m.timeout_ms) || m.timeout_ms < 500 || m.timeout_ms > 60000) errs.push('Timeout must be between 500 and 60000 ms.');
   else if (Number.isInteger(m.interval_s) && m.timeout_ms >= m.interval_s * 1000) errs.push('Timeout must be shorter than the interval.');
@@ -313,10 +348,12 @@ export function registerAdmin(router) {
       const now = Date.now();
       const { lastInsertRowid } = run(
         `INSERT INTO monitors (name, component_id, type, scope, target, port, method, expected_status, keyword, ignore_tls,
-           follow_redirects, interval_s, timeout_ms, degraded_ms, failure_threshold, enabled, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           follow_redirects, interval_s, timeout_ms, degraded_ms, failure_threshold, enabled, dns_record_type, dns_server,
+           auto_incident_minutes, push_token, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         m.name, m.component_id, m.type, m.scope, m.target, m.port, m.method, m.expected_status, m.keyword, m.ignore_tls,
-        m.follow_redirects, m.interval_s, m.timeout_ms, m.degraded_ms, m.failure_threshold, m.enabled, now, now,
+        m.follow_redirects, m.interval_s, m.timeout_ms, m.degraded_ms, m.failure_threshold, m.enabled, m.dns_record_type, m.dns_server,
+        m.auto_incident_minutes, m.type === 'push' ? newPushToken() : null, now, now,
       );
       const id = Number(lastInsertRowid);
       scheduler.reload(id);
@@ -362,14 +399,18 @@ export function registerAdmin(router) {
         return sendHtml(ctx.res, 422, V.monitorFormPage(view(ctx), { monitor: { ...m, id }, components: components(), errorList: errs, isNew: false }));
       }
       // If what is being checked changed, the previous state no longer applies.
-      const targetChanged = existing.type !== m.type || existing.target !== m.target || existing.port !== m.port;
+      const targetChanged =
+        existing.type !== m.type || existing.target !== m.target || existing.port !== m.port ||
+        existing.dns_record_type !== m.dns_record_type || existing.dns_server !== m.dns_server;
       run(
         `UPDATE monitors SET name = ?, component_id = ?, type = ?, scope = ?, target = ?, port = ?, method = ?, expected_status = ?,
            keyword = ?, ignore_tls = ?, follow_redirects = ?, interval_s = ?, timeout_ms = ?, degraded_ms = ?, failure_threshold = ?,
-           enabled = ?, updated_at = ?${targetChanged ? ", state = 'unknown', state_since = NULL, consecutive_failures = 0, tls_expires_at = NULL" : ''}
+           enabled = ?, dns_record_type = ?, dns_server = ?, auto_incident_minutes = ?, push_token = ?,
+           updated_at = ?${targetChanged ? ", state = 'unknown', state_since = NULL, consecutive_failures = 0, tls_expires_at = NULL, last_push_at = NULL" : ''}
          WHERE id = ?`,
         m.name, m.component_id, m.type, m.scope, m.target, m.port, m.method, m.expected_status, m.keyword, m.ignore_tls,
-        m.follow_redirects, m.interval_s, m.timeout_ms, m.degraded_ms, m.failure_threshold, m.enabled, Date.now(), id,
+        m.follow_redirects, m.interval_s, m.timeout_ms, m.degraded_ms, m.failure_threshold, m.enabled, m.dns_record_type, m.dns_server,
+        m.auto_incident_minutes, existing.push_token || (m.type === 'push' ? newPushToken() : null), Date.now(), id,
       );
       if (!m.enabled) run(`UPDATE monitors SET state = 'unknown', state_since = NULL, consecutive_failures = 0 WHERE id = ?`, id);
       scheduler.reload(id);
@@ -397,8 +438,19 @@ export function registerAdmin(router) {
     auth(async (ctx) => {
       const id = idParam(ctx);
       mustGet('SELECT id FROM monitors WHERE id = ?', id);
-      await scheduler.checkNow(id);
-      redirect(ctx.res, `/admin/monitors/${id}?ok=checked`);
+      const rec = await scheduler.checkNow(id);
+      redirect(ctx.res, `/admin/monitors/${id}?ok=${rec ? 'checked' : 'push_waiting'}`);
+    }),
+  );
+
+  router.post(
+    '/admin/monitors/:id/push-token',
+    auth((ctx) => {
+      const id = idParam(ctx);
+      mustGet(`SELECT id FROM monitors WHERE id = ? AND type = 'push'`, id);
+      run('UPDATE monitors SET push_token = ?, updated_at = ? WHERE id = ?', newPushToken(), Date.now(), id);
+      log.info('heartbeat url regenerated', { id, by: ctx.user.username });
+      redirect(ctx.res, `/admin/monitors/${id}?ok=push_token`);
     }),
   );
 

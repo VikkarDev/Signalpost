@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.0
+
+- **Heartbeat monitors**: a backup script or cron job calls a secret URL when it finishes, and the monitor goes down if the call doesn't come. Supports reporting failures (`?status=down&msg=...`) and the job's duration (`?ms=...`)
+- **DNS checks**: A, AAAA, CNAME, MX, NS and TXT records, with an optional expected answer and DNS server
+- **Automatic incidents** (opt-in per monitor): opens a public incident after a monitor has been down for a set number of minutes, and resolves it when it's back
+- **Status badges** at `/badge.svg` and `/badge/<id>.svg`, with snippets on the component and settings pages
+- Database migration 4 runs automatically on start. Existing monitors and history are kept
+
 ## 1.2.9
 
 - Hovering (or tapping) a day in the history bars shows a breakdown: uptime that day, how long each incident lasted by impact, measured downtime and slow time, maintenance, and links to the related incidents

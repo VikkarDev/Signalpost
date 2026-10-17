@@ -4,6 +4,7 @@
 import http from 'node:http';
 import https from 'node:https';
 import net from 'node:net';
+import dns from 'node:dns';
 import { spawn } from 'node:child_process';
 import { config } from '../config.js';
 
@@ -240,8 +241,67 @@ export function pingProbe(m) {
   });
 }
 
+export const DNS_RECORD_TYPES = ['A', 'AAAA', 'CNAME', 'MX', 'NS', 'TXT'];
+
+const DNS_ERRORS = {
+  ENOTFOUND: 'Domain does not exist (NXDOMAIN)',
+  ENODATA: 'No record of this type',
+  ETIMEOUT: 'DNS server did not answer',
+  ECONNREFUSED: 'DNS server refused the connection',
+  ESERVFAIL: 'DNS server failed (SERVFAIL)',
+  EREFUSED: 'DNS server refused the query',
+};
+
+const normalizeName = (v) => String(v).trim().toLowerCase().replace(/\.$/, '');
+
+/** Resolve a record, optionally through a specific server, and compare with the expected answers. */
+export async function dnsProbe(m) {
+  const type = DNS_RECORD_TYPES.includes(m.dns_record_type) ? m.dns_record_type : 'A';
+  const resolver = new dns.promises.Resolver({ timeout: m.timeout_ms, tries: 1 });
+  if (m.dns_server) resolver.setServers([m.dns_server]);
+  const started = performance.now();
+  let answers;
+  try {
+    const raw = await resolver.resolve(m.target, type);
+    answers = raw.map((r) => (type === 'MX' ? r.exchange : type === 'TXT' ? r.join('') : r));
+  } catch (err) {
+    return { ok: false, responseMs: null, error: DNS_ERRORS[err.code] ? `${DNS_ERRORS[err.code]} (${err.code})` : describeError(err) };
+  }
+  const responseMs = Math.round(performance.now() - started);
+  const expected = String(m.keyword || '').split(',').map((v) => v.trim()).filter(Boolean);
+  // TXT values are compared as-is, everything else as host names / addresses.
+  const norm = type === 'TXT' ? (v) => v : normalizeName;
+  const got = new Set(answers.map(norm));
+  const missing = expected.filter((v) => !got.has(norm(v)));
+  if (missing.length) {
+    return { ok: false, responseMs, error: `Expected ${missing.join(', ')} but got ${answers.join(', ').slice(0, 300) || 'nothing'}` };
+  }
+  return { ok: true, responseMs };
+}
+
+/** How long a heartbeat may be overdue before it counts as missed. */
+export function heartbeatGraceMs(m) {
+  return Math.max(60000, m.interval_s * 100);
+}
+
+/**
+ * Heartbeat monitors don't probe anything: pushes arrive at /api/push/<token>.
+ * The scheduled run only records a failure when the last push is overdue, and nothing otherwise.
+ */
+export function heartbeatProbe(m, now = Date.now()) {
+  // Counted from the last push, or from the last edit / re-enable if that is more recent.
+  const since = Math.max(m.last_push_at ?? 0, m.updated_at);
+  if (now - since <= m.interval_s * 1000 + heartbeatGraceMs(m)) return Promise.resolve(null);
+  const what = m.last_push_at ? 'No heartbeat' : 'No heartbeat yet';
+  return Promise.resolve({ ok: false, responseMs: null, error: `${what} in the last ${Math.round((now - since) / 60000)} min` });
+}
+
 export function runProbe(m) {
   switch (m.type) {
+    case 'dns':
+      return dnsProbe(m);
+    case 'push':
+      return heartbeatProbe(m);
     case 'http':
       return httpProbe(m);
     case 'tcp':

@@ -99,6 +99,7 @@ before(async () => {
       MIN_CHECK_INTERVAL_SECONDS: '5',
       LOG_LEVEL: 'warn',
       LOGIN_MAX_ATTEMPTS: '3',
+      PUBLIC_RATE_LIMIT_PER_MINUTE: '2000',
     },
     stdio: ['ignore', 'inherit', 'inherit'],
   });
@@ -494,6 +495,106 @@ test('a service that failed recently shows as recovered', async () => {
 
   await req('POST', `/admin/monitors/${id}/delete`, { _csrf: token });
   await req('POST', `/admin/components/${cid}/delete`, { _csrf: token });
+});
+
+test('heartbeat monitors are fed through their secret URL', async () => {
+  const token = await csrf();
+  const created = await req('POST', '/admin/monitors', {
+    _csrf: token, name: 'nightly backup', type: 'push', scope: 'internal', target: 'ignored', interval_s: '3600', timeout_ms: '2000', failure_threshold: '1', enabled: '1',
+  });
+  assert.equal(created.status, 303, created.text);
+  const id = Number(/\/admin\/monitors\/(\d+)/.exec(created.location)[1]);
+  const page = await req('GET', `/admin/monitors/${id}`);
+  const url = /\/api\/push\/([a-f0-9]{32})/.exec(page.text);
+  assert.ok(url, 'detail page shows the heartbeat URL');
+
+  // Nothing is overdue yet, so "Check now" records nothing.
+  const check = await req('POST', `/admin/monitors/${id}/check`, { _csrf: token });
+  assert.match(check.location, /push_waiting/);
+
+  assert.equal((await fetch(`${BASE}/api/push/${url[1]}?ms=1500`)).status, 200);
+  let m = await req('GET', `/admin/monitors/${id}`);
+  assert.match(m.text, /1500 ms/);
+  assert.equal((await fetch(`${BASE}/api/push/${url[1]}?status=down&msg=disk%20full`, { method: 'POST' })).status, 200);
+  m = await req('GET', `/admin/monitors/${id}`);
+  assert.match(m.text, /Reported down: disk full/);
+  assert.equal((await fetch(`${BASE}/api/push/${'0'.repeat(32)}`)).status, 404);
+
+  // A new URL replaces the old one.
+  await req('POST', `/admin/monitors/${id}/push-token`, { _csrf: token });
+  assert.equal((await fetch(`${BASE}/api/push/${url[1]}`)).status, 404);
+  await req('POST', `/admin/monitors/${id}/delete`, { _csrf: token });
+});
+
+test('dns monitors validate their settings', async () => {
+  const token = await csrf();
+  const base = { _csrf: token, name: 'dns', type: 'dns', scope: 'public', interval_s: '60', timeout_ms: '2000', failure_threshold: '1', enabled: '1' };
+  const bad = await req('POST', '/admin/monitors', { ...base, target: 'not a domain', dns_record_type: 'A', dns_server: 'dns.google' });
+  assert.equal(bad.status, 422);
+  assert.match(bad.text, /domain name/);
+  assert.match(bad.text, /DNS server must be an IP/);
+  const ok = await req('POST', '/admin/monitors', { ...base, enabled: '', target: 'Example.com', dns_record_type: 'MX', dns_server: '1.1.1.1', dns_expected: 'mail.example.com' });
+  assert.equal(ok.status, 303);
+  const id = Number(/\/admin\/monitors\/(\d+)/.exec(ok.location)[1]);
+  const page = await req('GET', `/admin/monitors/${id}`);
+  assert.match(page.text, /example\.com \(MX via 1\.1\.1\.1\)/);
+  assert.match(page.text, /mail\.example\.com/);
+  await req('POST', `/admin/monitors/${id}/delete`, { _csrf: token });
+});
+
+test('automatic incidents open after the delay and close on recovery', async () => {
+  const token = await csrf();
+  const c = await req('POST', '/admin/components', { _csrf: token, name: 'Photos', sort_order: '50', visible: '1' });
+  const cid = Number(/\/admin\/components\/(\d+)/.exec(c.location)[1]);
+  const created = await req('POST', '/admin/monitors', {
+    _csrf: token, name: 'photos', component_id: String(cid), type: 'http', scope: 'public', target: `http://127.0.0.1:${targetPort}/photos`,
+    method: 'GET', expected_status: '200-299', interval_s: '3600', timeout_ms: '2000', failure_threshold: '1', auto_incident_minutes: '5', enabled: '1',
+  });
+  const id = Number(/\/admin\/monitors\/(\d+)/.exec(created.location)[1]);
+  const incidents = () => req('GET', '/api/v1/status').then((r) => JSON.parse(r.text).incidents.filter((i) => i.title === 'Photos is down'));
+
+  targetStatus = 503;
+  await req('POST', `/admin/monitors/${id}/check`, { _csrf: token });
+  await new Promise((r) => setTimeout(r, 200));
+  assert.equal((await incidents()).length, 0, 'not before the delay');
+
+  // Pretend it has been down for 10 minutes.
+  const db = new DatabaseSync(path.join(dataDir, 'signalpost.db'));
+  db.exec('PRAGMA busy_timeout = 5000');
+  db.prepare('UPDATE monitors SET state_since = ? WHERE id = ?').run(Date.now() - 10 * 60000, id);
+  db.close();
+  await req('POST', `/admin/monitors/${id}/check`, { _csrf: token });
+  await new Promise((r) => setTimeout(r, 200));
+  const open = await incidents();
+  assert.equal(open.length, 1);
+  assert.equal(open[0].impact, 'major');
+
+  // Still down: no second incident.
+  await req('POST', `/admin/monitors/${id}/check`, { _csrf: token });
+  await new Promise((r) => setTimeout(r, 200));
+  assert.equal((await incidents()).length, 1);
+
+  targetStatus = 200;
+  await req('POST', `/admin/monitors/${id}/check`, { _csrf: token });
+  await new Promise((r) => setTimeout(r, 200));
+  assert.equal((await incidents()).length, 0, 'resolved once it is back');
+  const pub = await req('GET', `/incidents/${open[0].id}`);
+  assert.match(pub.text, /Resolved automatically/);
+  await req('POST', `/admin/monitors/${id}/delete`, { _csrf: token });
+  await req('POST', `/admin/components/${cid}/delete`, { _csrf: token });
+});
+
+test('status badges', async () => {
+  const overall = await fetch(`${BASE}/badge.svg?label=my%20status`);
+  assert.equal(overall.status, 200);
+  assert.match(overall.headers.get('content-type'), /image\/svg\+xml/);
+  const svg = await overall.text();
+  assert.match(svg, /my status/);
+  const one = await fetch(`${BASE}/badge/${componentId}.svg?uptime=1`);
+  assert.equal(one.status, 200);
+  assert.match(await one.text(), /Files/);
+  assert.equal((await fetch(`${BASE}/badge/99999.svg`)).status, 404);
+  assert.match(await fetch(`${BASE}/badge.svg?label=%3Cscript%3E`).then((r) => r.text()), /&lt;script&gt;/);
 });
 
 test('backup download returns a SQLite file', async () => {

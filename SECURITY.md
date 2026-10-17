@@ -27,11 +27,12 @@ Notes on what's in place, mostly so you know what you're deploying.
 
 - Admin and SMTP passwords come from environment variables and are never stored in plain text.
 - Discord and other webhook URLs, ntfy topics and access tokens are stored in the database. They're masked in the admin UI (tokens are never shown at all) and never shown publicly.
-- The database backup download contains webhook URLs. Keep backups private.
+- Heartbeat URLs contain a random 128-bit token. Anyone who has one can report that monitor up or down, nothing else. They can be replaced from the monitor page.
+- The database backup download contains webhook URLs and heartbeat tokens. Keep backups private.
 
 ### What the public can see
 
-The public page, `/history`, `/incidents/:id` and `/api/v1/status` show component names, descriptions, status, uptime, response time, incidents and maintenance.
+The public page, `/history`, `/incidents/:id`, `/api/v1/status` and the badges show component names, descriptions, status, uptime, response time, incidents and maintenance.
 
 They never show monitor targets, hostnames, IPs, error messages, canary monitors, monitors without a component, or hidden components. `/healthz` only returns `{"status":"ok"}`.
 

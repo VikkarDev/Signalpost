@@ -220,4 +220,51 @@ DROP TABLE alert_rules;
 ALTER TABLE alert_rules_new RENAME TO alert_rules;
 `,
   },
+  {
+    version: 4,
+    name: 'dns and heartbeat checks, automatic incidents',
+    // Rebuilt for the wider type CHECK; see migration 3 for why that's safe.
+    sql: `
+CREATE TABLE monitors_new (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  component_id INTEGER REFERENCES components(id) ON DELETE SET NULL,
+  type TEXT NOT NULL CHECK (type IN ('http', 'tcp', 'ping', 'dns', 'push')),
+  scope TEXT NOT NULL DEFAULT 'public' CHECK (scope IN ('internal', 'public', 'canary')),
+  target TEXT NOT NULL,
+  port INTEGER,
+  method TEXT NOT NULL DEFAULT 'GET',
+  expected_status TEXT NOT NULL DEFAULT '200-399',
+  keyword TEXT,
+  ignore_tls INTEGER NOT NULL DEFAULT 0,
+  follow_redirects INTEGER NOT NULL DEFAULT 1,
+  interval_s INTEGER NOT NULL DEFAULT 60,
+  timeout_ms INTEGER NOT NULL DEFAULT 10000,
+  degraded_ms INTEGER,
+  failure_threshold INTEGER NOT NULL DEFAULT 2,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  state TEXT NOT NULL DEFAULT 'unknown' CHECK (state IN ('up', 'degraded', 'down', 'unknown')),
+  state_since INTEGER,
+  consecutive_failures INTEGER NOT NULL DEFAULT 0,
+  last_check_at INTEGER,
+  last_response_ms INTEGER,
+  last_status_code INTEGER,
+  last_error TEXT,
+  tls_expires_at INTEGER,
+  dns_record_type TEXT,
+  dns_server TEXT,
+  push_token TEXT UNIQUE,
+  last_push_at INTEGER,
+  auto_incident_minutes INTEGER,
+  auto_incident_id INTEGER REFERENCES incidents(id) ON DELETE SET NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+INSERT INTO monitors_new (id, name, component_id, type, scope, target, port, method, expected_status, keyword, ignore_tls, follow_redirects, interval_s, timeout_ms, degraded_ms, failure_threshold, enabled, state, state_since, consecutive_failures, last_check_at, last_response_ms, last_status_code, last_error, tls_expires_at, created_at, updated_at)
+SELECT id, name, component_id, type, scope, target, port, method, expected_status, keyword, ignore_tls, follow_redirects, interval_s, timeout_ms, degraded_ms, failure_threshold, enabled, state, state_since, consecutive_failures, last_check_at, last_response_ms, last_status_code, last_error, tls_expires_at, created_at, updated_at FROM monitors;
+DROP TABLE monitors;
+ALTER TABLE monitors_new RENAME TO monitors;
+CREATE INDEX idx_monitors_component ON monitors(component_id);
+`,
+  },
 ];

@@ -238,7 +238,7 @@ function monitorFields(m) {
   return [
     { name: 'Monitor', value: m.name },
     { name: 'Component', value: comp ? comp.name : '—' },
-    { name: 'Check', value: `${m.type.toUpperCase()} (${m.scope})` },
+    { name: 'Check', value: `${m.type === 'push' ? 'Heartbeat' : m.type.toUpperCase()} (${m.scope})` },
     { name: 'Target', value: m.type === 'tcp' ? `${m.target}:${m.port}` : m.target, inline: false },
   ];
 }

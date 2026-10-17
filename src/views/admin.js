@@ -3,6 +3,17 @@ import { formatDateTime, formatTime, relativeTime, tsToLocalInput, formatDuratio
 import { formatUptime, COMPONENT_STATES, INCIDENT_STATUSES, INCIDENT_IMPACTS } from '../status.js';
 import { adminLayout, VERSION, ago } from './layout.js';
 import { config } from '../config.js';
+import { DNS_RECORD_TYPES, heartbeatGraceMs } from '../monitor/probes.js';
+
+/** What a monitor checks, for tables and the detail page. */
+function targetText(m) {
+  if (m.type === 'tcp') return `${m.target}:${m.port}`;
+  if (m.type === 'dns') return `${m.target} (${m.dns_record_type || 'A'}${m.dns_server ? ` via ${m.dns_server}` : ''})`;
+  if (m.type === 'push') return 'heartbeat URL';
+  return m.target;
+}
+
+const TYPE_LABEL = { http: 'HTTP', tcp: 'TCP', ping: 'Ping', dns: 'DNS', push: 'Heartbeat' };
 
 const csrfField = (csrf) => html`<input type="hidden" name="_csrf" value="${csrf}">`;
 
@@ -86,7 +97,7 @@ export function loginPage({ error, adminMissing, username = '' }) {
 export function dashboardPage(ctx, { components, unassigned, canaries, totals }) {
   const monitorRow = (m) => html`<tr class="${m.enabled ? '' : 'disabled'}">
     <td class="c-name"><a href="/admin/monitors/${m.id}">${m.name}</a>${m.enabled ? '' : html` <span class="pill">disabled</span>`}</td>
-    <td class="c-meta">${SCOPE_LABEL[m.scope]} ${m.type.toUpperCase()}</td>
+    <td class="c-meta">${SCOPE_LABEL[m.scope]} ${TYPE_LABEL[m.type]}</td>
     <td class="c-state">${m.enabled ? stateBadge(m.state) : html`<span class="badge">Off</span>`}</td>
     <td class="num c-meta">${m.last_response_ms != null ? `${m.last_response_ms} ms` : ''}</td>
     <td class="c-meta">${m.last_check_at ? ago(m.last_check_at, '', m.enabled ? m.interval_s * 2000 + m.timeout_ms + 30000 : null) : ''}</td>
@@ -161,8 +172,8 @@ export function monitorsPage(ctx, monitors) {
         (m) => html`<tr class="${m.enabled ? '' : 'disabled'}">
           <td class="c-name"><a href="/admin/monitors/${m.id}">${m.name}</a></td>
           <td class="${m.component_name ? 'c-meta' : 'c-hide'}">${m.component_name || ''}</td>
-          <td class="c-meta">${SCOPE_LABEL[m.scope]} ${m.type.toUpperCase()}</td>
-          <td class="mono c-full">${m.type === 'tcp' ? `${m.target}:${m.port}` : m.target}</td>
+          <td class="c-meta">${SCOPE_LABEL[m.scope]} ${TYPE_LABEL[m.type]}</td>
+          <td class="mono c-full">${targetText(m)}</td>
           <td class="c-meta c-labelled">${formatDuration(m.interval_s * 1000)}</td>
           <td class="c-state">${m.enabled ? stateBadge(m.state) : html`<span class="badge">Off</span>`}</td>
           <td class="row-actions c-hide">
@@ -189,7 +200,10 @@ export function monitorFormPage(ctx, { monitor, components, errorList, isNew }) 
       ${csrfField(ctx.csrf)}
       ${field('Name', input('name', m.name, { required: true, maxlength: 100 }))}
       ${field('Component', select('component_id', [['', 'None (admin only)'], ...components.map((c) => [c.id, c.name])], m.component_id))}
-      ${field('Check type', select('type', [['http', 'HTTP / HTTPS'], ['tcp', 'TCP port'], ['ping', 'Ping (ICMP)']], m.type, { id: 'type-select' }))}
+      ${field(
+        'Check type',
+        select('type', [['http', 'HTTP / HTTPS'], ['tcp', 'TCP port'], ['ping', 'Ping (ICMP)'], ['dns', 'DNS record'], ['push', 'Heartbeat (your job calls a URL)']], m.type, { id: 'type-select' }),
+      )}
       ${field(
         'Scope',
         select('scope', [['public', 'Public (through the internet / your proxy)'], ['internal', 'Internal (directly to the container or LAN host)'], ['canary', 'Canary (internet connectivity reference)']], m.scope),
@@ -197,9 +211,20 @@ export function monitorFormPage(ctx, { monitor, components, errorList, isNew }) 
       )}
       ${field(
         'Target',
-        input('target', m.target, { required: true, maxlength: 2000, placeholder: 'https://app.example.com  or  my-container  or  192.168.1.10', spellcheck: 'false' }),
-        'HTTP: full URL. TCP and ping: host name or IP. Containers on the same Docker network can be reached by name.',
+        input('target', m.target, { maxlength: 2000, placeholder: 'https://app.example.com  or  my-container  or  192.168.1.10', spellcheck: 'false' }),
+        'HTTP: full URL. TCP and ping: host name or IP. DNS: the domain to look up. Containers on the same Docker network can be reached by name.',
+        'f-target',
       )}
+      <p class="hint field" id="f-push-help">You get a secret URL after saving. Have your backup script or cron job call it when it finishes,
+        e.g. <code>curl -fsS https://your-status-page/api/push/…</code>. If no call arrives within the interval below, the monitor goes down.</p>
+      ${field('Record type', select('dns_record_type', DNS_RECORD_TYPES.map((t) => [t, t]), m.dns_record_type || 'A'), '', 'f-dns-type')}
+      ${field(
+        'Expected answer',
+        input('dns_expected', m.type === 'dns' ? m.keyword : '', { maxlength: 500, placeholder: '203.0.113.10', spellcheck: 'false' }),
+        'Optional. Comma-separated; every value must be in the answer. Empty = the name just has to resolve.',
+        'f-dns-expected',
+      )}
+      ${field('DNS server', input('dns_server', m.dns_server, { maxlength: 60, placeholder: '1.1.1.1', spellcheck: 'false' }), 'Optional. Empty uses the container\'s resolver.', 'f-dns-server')}
       ${field('Port', input('port', m.port, { type: 'number', min: 1, max: 65535 }), 'TCP checks only.', 'f-port')}
       ${field('HTTP method', select('method', [['GET', 'GET'], ['HEAD', 'HEAD']], m.method), '', 'f-method')}
       ${field('Expected status codes', input('expected_status', m.expected_status, { maxlength: 100, placeholder: '200-399' }), 'Comma-separated codes or ranges, e.g. 200-299,301,401.', 'f-status')}
@@ -208,10 +233,19 @@ export function monitorFormPage(ctx, { monitor, components, errorList, isNew }) 
         ${checkbox('follow_redirects', m.follow_redirects, 'Follow redirects (up to 5)')}
         ${checkbox('ignore_tls', m.ignore_tls, 'Ignore TLS certificate errors (self-signed internal services)')}
       </div>
-      ${field('Check interval (seconds)', input('interval_s', m.interval_s, { type: 'number', min: config.minCheckIntervalSeconds, max: 86400, required: true }))}
-      ${field('Timeout (milliseconds)', input('timeout_ms', m.timeout_ms, { type: 'number', min: 500, max: 60000, required: true }))}
+      ${field(
+        'Check interval (seconds)',
+        input('interval_s', m.interval_s, { type: 'number', min: config.minCheckIntervalSeconds, max: 31 * 86400, required: true }),
+        'How often to check. For a heartbeat: how often your job runs (3600 = hourly, 86400 = daily); it may be up to 10% late.',
+      )}
+      ${field('Timeout (milliseconds)', input('timeout_ms', m.timeout_ms, { type: 'number', min: 500, max: 60000, required: true }), '', 'f-timeout')}
       ${field('Degraded above (milliseconds)', input('degraded_ms', m.degraded_ms, { type: 'number', min: 1, max: 600000 }), 'Optional. Successful checks slower than this count as degraded.')}
       ${field('Failures before "down"', input('failure_threshold', m.failure_threshold, { type: 'number', min: 1, max: 20, required: true }), 'Consecutive failed checks needed before the monitor is marked down and alerts fire. Every failed check still counts against uptime.')}
+      ${field(
+        'Open an incident after (minutes down)',
+        input('auto_incident_minutes', m.auto_incident_minutes, { type: 'number', min: 1, max: 10080, placeholder: 'Off' }),
+        'Optional. Posts a public incident for this monitor\'s component once it has been down this long, and resolves it when it\'s back. Empty = off.',
+      )}
       <div class="field">${checkbox('enabled', m.enabled, 'Enabled')}</div>
       <div class="form-actions">
         <button type="submit" class="btn btn-primary">${isNew ? 'Create monitor' : 'Save changes'}</button>
@@ -219,6 +253,18 @@ export function monitorFormPage(ctx, { monitor, components, errorList, isNew }) 
       </div>
     </form>`,
   });
+}
+
+function heartbeatCard(ctx, m) {
+  const url = `${config.publicUrl}/api/push/${m.push_token}`;
+  return html`<div class="card">
+    <h2>Heartbeat URL</h2>
+    <p class="muted small">Call this when your job finishes. Anyone with the URL can report for this monitor, so treat it like a password.</p>
+    <pre class="snippet"><code>curl -fsS -m 10 ${url}</code></pre>
+    <p class="muted small">Report a failure: <code>${url}?status=down&amp;msg=Backup%20failed</code>. Add <code>&amp;ms=1234</code> to record how long the job took.
+      Last heartbeat: ${m.last_push_at ? ago(m.last_push_at) : 'never'}.</p>
+    ${postButton({ action: `/admin/monitors/${m.id}/push-token`, csrf: ctx.csrf, label: 'Create a new URL', confirm: 'The current URL will stop working. Continue?' })}
+  </div>`;
 }
 
 export function monitorDetailPage(ctx, { monitor: m, component, checks, uptime, history }) {
@@ -238,8 +284,12 @@ export function monitorDetailPage(ctx, { monitor: m, component, checks, uptime, 
     </div>
     <div class="card">
       <dl class="facts">
-        <dt>Target</dt><dd class="mono">${m.type === 'tcp' ? `${m.target}:${m.port}` : m.target}</dd>
-        <dt>Check</dt><dd>${SCOPE_LABEL[m.scope]} ${m.type.toUpperCase()}, every ${formatDuration(m.interval_s * 1000)}, ${m.timeout_ms / 1000}s timeout</dd>
+        ${m.type === 'push' ? '' : html`<dt>Target</dt><dd class="mono">${targetText(m)}</dd>`}
+        ${m.type === 'dns' && m.keyword ? html`<dt>Expected</dt><dd class="mono">${m.keyword}</dd>` : ''}
+        <dt>Check</dt><dd>${m.type === 'push'
+          ? `${SCOPE_LABEL[m.scope]} heartbeat, expected every ${formatDuration(m.interval_s * 1000)} (+${formatDuration(heartbeatGraceMs(m))} grace)`
+          : `${SCOPE_LABEL[m.scope]} ${TYPE_LABEL[m.type]}, every ${formatDuration(m.interval_s * 1000)}, ${m.timeout_ms / 1000}s timeout`}</dd>
+        ${m.auto_incident_minutes ? html`<dt>Auto incident</dt><dd>after ${m.auto_incident_minutes} min down${m.auto_incident_id ? html` · <a href="/admin/incidents/${m.auto_incident_id}">open incident</a>` : ''}</dd>` : ''}
         <dt>Component</dt><dd>${component ? html`<a href="/admin/components/${component.id}">${component.name}</a>` : '—'}</dd>
         <dt>State since</dt><dd>${m.state_since ? html`${formatDateTime(m.state_since)} (${ago(m.state_since)})` : '—'}</dd>
         <dt>Last check</dt><dd>${m.last_check_at ? html`${ago(m.last_check_at)}${m.last_response_ms != null ? `, ${m.last_response_ms} ms` : ''}${m.last_status_code ? `, HTTP ${m.last_status_code}` : ''}` : 'never'}</dd>
@@ -248,6 +298,7 @@ export function monitorDetailPage(ctx, { monitor: m, component, checks, uptime, 
         <dt>Uptime</dt><dd class="uptimes"><span>24h ${pct(uptime.d1)}</span><span>7d ${pct(uptime.d7)}</span><span>30d ${pct(uptime.d30)}</span><span>90d ${pct(uptime.d90)}</span></dd>
       </dl>
     </div>
+    ${m.type === 'push' ? heartbeatCard(ctx, m) : ''}
     <div class="card">
       <h2>90 days</h2>
       <div class="bars bars-admin">${history.days.map(
@@ -298,6 +349,16 @@ export function componentsPage(ctx, components) {
   });
 }
 
+/** Preview and copy-paste snippets for a status badge. */
+export function badgeCard(url, alt, previewPath, { uptime = true } = {}) {
+  return html`<div class="card"><h2>Badge</h2>
+    <p><img src="${previewPath}" alt="${alt} status" height="20">${uptime ? html` <img src="${previewPath}?uptime=1" alt="${alt} uptime" height="20">` : ''}</p>
+    <p class="muted small">For a README or website.${uptime ? html` Add <code>?uptime=1</code> for the uptime %,` : ''} <code>?label=…</code> changes the text on the left.</p>
+    <pre class="snippet"><code>![${alt} status](${url})</code></pre>
+    <pre class="snippet"><code>&lt;img src="${url}" alt="${alt} status"&gt;</code></pre>
+  </div>`;
+}
+
 export function componentFormPage(ctx, { component: c, groups = [], errorList, isNew, monitors = [] }) {
   return adminLayout({
     ...ctx,
@@ -321,8 +382,9 @@ export function componentFormPage(ctx, { component: c, groups = [], errorList, i
     ${isNew
       ? ''
       : html`<div class="card"><h2>Monitors</h2>
-        ${monitors.length ? html`<ul>${monitors.map((m) => html`<li><a href="/admin/monitors/${m.id}">${m.name}</a> · ${SCOPE_LABEL[m.scope]} ${m.type.toUpperCase()} ${stateBadge(m.state)}</li>`)}</ul>` : html`<p class="muted">None.</p>`}
-        <a class="btn" href="/admin/monitors/new?component_id=${c.id}">Add monitor</a></div>`}`,
+        ${monitors.length ? html`<ul>${monitors.map((m) => html`<li><a href="/admin/monitors/${m.id}">${m.name}</a> · ${SCOPE_LABEL[m.scope]} ${TYPE_LABEL[m.type]} ${stateBadge(m.state)}</li>`)}</ul>` : html`<p class="muted">None.</p>`}
+        <a class="btn" href="/admin/monitors/new?component_id=${c.id}">Add monitor</a></div>
+        ${c.visible ? badgeCard(`${config.publicUrl}/badge/${c.id}.svg`, c.name, `/badge/${c.id}.svg`) : ''}`}`,
   });
 }
 
@@ -638,6 +700,7 @@ export function settingsPage(ctx, { siteName, heading, footerLinks, logoVersion,
         <dt>Email (SMTP)</dt><dd>${info.smtp}</dd>
         <dt>Uptime</dt><dd>${formatDuration(process.uptime() * 1000)}</dd>
       </dl>
-    </div>`,
+    </div>
+    ${badgeCard(`${config.publicUrl}/badge.svg`, siteName, '/badge.svg', { uptime: false })}`,
   });
 }

@@ -7,6 +7,7 @@ import { dayKey, DAY_MS } from '../lib/time.js';
 import { runProbe } from './probes.js';
 import { notifyMonitorTransition, notifyTlsExpiry } from '../notify/index.js';
 import { maintenanceComponentIds } from '../status.js';
+import { syncAutoIncident } from './autoincident.js';
 
 const TLS_WARN_DAYS = 14;
 
@@ -169,6 +170,7 @@ export class Scheduler {
         } catch (err) {
           result = { ok: false, responseMs: null, error: `Internal probe error: ${err.message}` };
         }
+        if (result === null) return null; // heartbeat monitor that isn't overdue: nothing to record
         const rec = recordCheck(id, result);
         if (!rec) return null;
         log.debug('check completed', { monitor: m.name, id, ok: result.ok, ms: result.responseMs, error: result.error });
@@ -203,7 +205,20 @@ export class Scheduler {
     }
   }
 
+  /** A heartbeat arrived at /api/push/<token>. */
+  async recordPush(m, result) {
+    const now = Date.now();
+    run('UPDATE monitors SET last_push_at = ? WHERE id = ?', now, m.id);
+    const rec = recordCheck(m.id, result, now);
+    if (rec && rec.previousState !== rec.newState) {
+      log.info('monitor state changed', { monitor: m.name, id: m.id, from: rec.previousState, to: rec.newState, error: rec.monitor.last_error });
+    }
+    if (rec) this.afterCheck(rec).catch((err) => log.error('notification dispatch failed', { err }));
+    return rec;
+  }
+
   async afterCheck(rec) {
+    await syncAutoIncident(rec).catch((err) => log.error('automatic incident failed', { err }));
     if (rec.inMaintenance) return; // alerts are suppressed during maintenance
     await notifyMonitorTransition(rec);
     if (rec.tlsExpiresAt && rec.tlsExpiresAt - Date.now() < TLS_WARN_DAYS * DAY_MS) {

@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { localInputToTs, tsToLocalInput, dayKey, lastDays } from '../src/lib/time.js';
-import { parseExpectedStatus } from '../src/monitor/probes.js';
+import { parseExpectedStatus, heartbeatProbe, dnsProbe } from '../src/monitor/probes.js';
+import dgram from 'node:dgram';
 import { liveComponentState, diagnose, formatUptime, coveredMs } from '../src/status.js';
 import { html, raw } from '../src/lib/html.js';
 import { DISCORD_WEBHOOK_RE, parseEmails, ntfyEndpoint, validateRuleTarget } from '../src/notify/index.js';
@@ -106,7 +107,7 @@ test('ntfy topic URLs split into server and topic', () => {
   assert.ok(validateRuleTarget('webhook', 'javascript:alert(1)'));
 });
 
-test('migration 3 keeps existing alert rules and their delivery log', () => {
+test('migrations keep existing alert rules, monitors and their history', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'signalpost-mig-'));
   const file = path.join(dir, 'old.db');
   const old = new DatabaseSync(file);
@@ -116,7 +117,10 @@ test('migration 3 keeps existing alert rules and their delivery log', () => {
     old.prepare('INSERT INTO schema_migrations VALUES (?, ?, ?)').run(m.version, m.name, 0);
   }
   old.exec(`INSERT INTO alert_rules (id, name, channel, target, created_at, updated_at) VALUES (7, 'mail', 'email', 'a@b.se', 0, 0);
-    INSERT INTO alert_log (rule_id, event, sent_at, ok) VALUES (7, 'test', 1, 1);`);
+    INSERT INTO alert_log (rule_id, event, sent_at, ok) VALUES (7, 'test', 1, 1);
+    INSERT INTO monitors (id, name, type, target, created_at, updated_at) VALUES (3, 'web', 'http', 'https://example.com', 0, 0);
+    INSERT INTO checks (monitor_id, checked_at, status) VALUES (3, 1, 'up');
+    INSERT INTO daily_stats (monitor_id, day, up) VALUES (3, '2026-01-01', 1);`);
   old.close();
 
   openDatabase(file);
@@ -124,6 +128,10 @@ test('migration 3 keeps existing alert rules and their delivery log', () => {
     assert.equal(dbAll('SELECT * FROM alert_rules')[0].target, 'a@b.se');
     assert.equal(dbAll('SELECT * FROM alert_log WHERE rule_id = 7').length, 1);
     assert.equal(dbAll('PRAGMA foreign_keys')[0].foreign_keys, 1);
+    // Migration 4 rebuilt the monitors table; its checks and daily totals are still attached.
+    assert.equal(dbAll('SELECT name FROM monitors WHERE id = 3')[0].name, 'web');
+    assert.equal(dbAll('SELECT COUNT(*) AS n FROM checks WHERE monitor_id = 3')[0].n, 1);
+    assert.equal(dbAll('SELECT COUNT(*) AS n FROM daily_stats WHERE monitor_id = 3')[0].n, 1);
     // The new channels pass the CHECK constraint, and deleting a rule still cascades.
     dbAll(`INSERT INTO alert_rules (name, channel, target, created_at, updated_at) VALUES ('p', 'ntfy', 'https://ntfy.sh/x', 0, 0) RETURNING id`);
     dbAll('DELETE FROM alert_rules WHERE id = 7 RETURNING id');
@@ -139,4 +147,53 @@ test('overlapping incidents on a day are only counted once', () => {
   assert.equal(coveredMs([[-100, 1000]], 0, 100), 100);
   assert.equal(coveredMs([[10, 20], [12, 15]], 0, 100), 10);
   assert.equal(coveredMs([], 0, 100), 0);
+});
+
+test('heartbeats are only missed once they are overdue', async () => {
+  const now = Date.now();
+  const m = { interval_s: 3600, updated_at: now - 7200000, last_push_at: now - 3000000 };
+  assert.equal(await heartbeatProbe(m, now), null);
+  const late = await heartbeatProbe({ ...m, last_push_at: now - 3600000 - 400000 }, now);
+  assert.equal(late.ok, false);
+  assert.match(late.error, /No heartbeat in the last 67 min/);
+  // Editing or re-enabling the monitor restarts the clock.
+  assert.equal(await heartbeatProbe({ ...m, last_push_at: now - 9e6, updated_at: now - 60000 }, now), null);
+  assert.match((await heartbeatProbe({ ...m, last_push_at: null, updated_at: now - 9e6 }, now)).error, /No heartbeat yet/);
+});
+
+// Minimal DNS server: answers every A query with 192.0.2.7 and everything else with no records.
+function fakeDns() {
+  const sock = dgram.createSocket('udp4');
+  sock.on('message', (q, rinfo) => {
+    let end = 12;
+    while (q[end] !== 0) end += q[end] + 1;
+    const qtype = q.readUInt16BE(end + 1);
+    const question = q.subarray(12, end + 5);
+    const header = Buffer.from(q.subarray(0, 12));
+    header.writeUInt16BE(0x8180, 2); // response, recursion available, no error
+    header.writeUInt16BE(1, 4);
+    header.writeUInt16BE(qtype === 1 ? 1 : 0, 6);
+    header.writeUInt32BE(0, 8);
+    const answer = qtype === 1 ? Buffer.from([0xc0, 0x0c, 0, 1, 0, 1, 0, 0, 0, 60, 0, 4, 192, 0, 2, 7]) : Buffer.alloc(0);
+    sock.send(Buffer.concat([header, question, answer]), rinfo.port, rinfo.address);
+  });
+  return new Promise((resolve) => sock.bind(0, '127.0.0.1', () => resolve(sock)));
+}
+
+test('dns checks compare the answer with what is expected', async () => {
+  const sock = await fakeDns();
+  const server = `127.0.0.1:${sock.address().port}`;
+  const base = { target: 'example.test', dns_record_type: 'A', dns_server: server, timeout_ms: 2000 };
+  try {
+    assert.equal((await dnsProbe(base)).ok, true);
+    assert.equal((await dnsProbe({ ...base, keyword: '192.0.2.7' })).ok, true);
+    const wrong = await dnsProbe({ ...base, keyword: '192.0.2.8' });
+    assert.equal(wrong.ok, false);
+    assert.match(wrong.error, /Expected 192\.0\.2\.8 but got 192\.0\.2\.7/);
+    const none = await dnsProbe({ ...base, dns_record_type: 'AAAA' });
+    assert.equal(none.ok, false);
+    assert.match(none.error, /No record of this type|ENODATA/);
+  } finally {
+    sock.close();
+  }
 });
