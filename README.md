@@ -4,7 +4,7 @@
 
 A small self-hosted status page with built-in uptime monitoring. One container, one SQLite file, no external services.
 
-It checks your services over HTTP, TCP or ping, keeps 90 days of history, and shows it on a public page in the style of the big hosted status pages. There's an admin area for monitors, incidents, maintenance windows and alerts (Discord and email).
+It checks your services over HTTP, TCP or ping, keeps 90 days of history, and shows it on a public page in the style of the big hosted status pages. There's an admin area for monitors, incidents, maintenance windows and alerts (Discord, ntfy push, webhooks and email).
 
 I built it to run on a Synology NAS behind Cloudflare Tunnel, but it runs anywhere Docker does.
 
@@ -19,7 +19,7 @@ I built it to run on a Synology NAS behind Cloudflare Tunnel, but it runs anywhe
 - HTTP(S), TCP and ping checks. Configurable interval, timeout, expected status codes, keyword match, "slow" threshold and how many failures in a row count as down.
 - Separate **internal**, **public** and **canary** checks, so you can tell "the app is down" apart from "the tunnel/DNS/internet is down" (more below).
 - Incidents with a public timeline, and maintenance windows that pause alerts and don't count against uptime.
-- Alerts to Discord webhooks and email, with rules per event type, per service and optional reminders while something stays down. Also warns before TLS certificates expire.
+- Alerts to Discord, your phone (via [ntfy](https://ntfy.sh)), any JSON webhook and email, with rules per event type, per service and optional reminders while something stays down. Also warns before TLS certificates expire.
 - RSS/Atom feed of incidents and maintenance at `/feed.xml`, and a read-only JSON API at `/api/v1/status`.
 - Small footprint: about 30-60 MB RAM, a single dependency (nodemailer), Node 24's built-in SQLite.
 
@@ -127,7 +127,7 @@ services:
   signalpost:
     build:
       context: .
-    image: signalpost:1.2.7
+    image: signalpost:1.2.8
     container_name: signalpost
     restart: unless-stopped
     init: true
@@ -194,7 +194,30 @@ To group services on the public page, give components the same **Group** name (e
 
 To follow incidents in Discord without alert rules, point any RSS bot at `https://your-status-page/feed.xml`.
 
-For Discord alerts, create a webhook in your server (Server Settings → Integrations → Webhooks) and paste the URL into a new alert rule. **Send test** confirms it works.
+### Alerts
+
+Add rules under **Alerts → New rule**. **Send test** on a rule confirms it works.
+
+- **Discord**: create a webhook in your server (Server Settings → Integrations → Webhooks) and paste the URL.
+- **ntfy (push to your phone)**: install the ntfy app, subscribe to a topic, and use the topic URL as the destination, e.g. `https://ntfy.sh/kitchen-nas-7f3k`. Topics on ntfy.sh are public to anyone who knows the name, so pick something hard to guess, or run your own ntfy server and put an access token in the token field. Downtime arrives as an urgent notification, recoveries as normal ones, and tapping it opens the monitor.
+- **Webhook**: any URL that accepts a JSON POST, such as Home Assistant, n8n or a Slack/Mattermost incoming webhook. An optional token is sent as `Authorization: Bearer …`. The body looks like this:
+
+  ```json
+  {
+    "site": "Status",
+    "event": "down",
+    "kind": "down",
+    "title": "Nextcloud is down",
+    "message": "Connection refused",
+    "url": "https://status.example.com/admin/monitors/3",
+    "fields": { "Monitor": "Nextcloud", "Component": "Cloud", "Check": "HTTP (internal)" },
+    "sent_at": "2026-10-17T11:30:16.892Z",
+    "text": "Nextcloud is down\nConnection refused"
+  }
+  ```
+
+  `event` is one of `down`, `recovery`, `degraded`, `reminder`, `tls_expiry`, `incident_created`, `incident_updated`, `incident_resolved`, `maintenance` or `test`. `text` is there for Slack-style webhooks that only read that field.
+- **Email**: needs the `SMTP_*` settings below.
 
 ## Configuration
 
@@ -313,7 +336,7 @@ src/auth.js            passwords, sessions, csrf, login limits
 src/monitor/probes.js  http / tcp / ping checks
 src/monitor/engine.js  scheduler, storing results, retention
 src/status.js          component status, uptime, diagnosis
-src/notify/index.js    alert rules, discord, email
+src/notify/index.js    alert rules, discord, ntfy, webhooks, email
 src/routes/            public and admin routes
 src/views/             server-rendered html
 public/                css, js, svg

@@ -182,6 +182,8 @@ function parseRule(form, isNew) {
     name: str(form, 'name', 100),
     channel: str(form, 'channel', 10),
     target: str(form, 'target', 2000),
+    token: str(form, 'token', 500),
+    clear_token: bool(form, 'clear_token'),
     on_down: bool(form, 'on_down') ? 1 : 0,
     on_recovery: bool(form, 'on_recovery') ? 1 : 0,
     on_degraded: bool(form, 'on_degraded') ? 1 : 0,
@@ -194,18 +196,30 @@ function parseRule(form, isNew) {
     enabled: bool(form, 'enabled') ? 1 : 0,
   };
   if (!r.name) errs.push('Name is required.');
-  if (!['discord', 'email'].includes(r.channel)) errs.push('Choose a channel.');
+  if (!['discord', 'email', 'ntfy', 'webhook'].includes(r.channel)) errs.push('Choose a channel.');
   else if (isNew || r.target) {
     const problem = validateRuleTarget(r.channel, r.target);
     if (problem) errs.push(problem);
   }
+  // It goes into an Authorization header, so plain printable ASCII only.
+  if (!/^[\x21-\x7e]*$/.test(r.token)) errs.push('The token can only contain letters, digits and symbols (no spaces).');
   if (!r.scopes) errs.push('Select at least one monitor scope.');
   if (!Number.isInteger(r.repeat_minutes) || r.repeat_minutes < 0 || r.repeat_minutes > 10080) errs.push('Repeat must be 0–10080 minutes.');
   return { r, errs };
 }
 
+// Webhook URLs and ntfy topics work like passwords, so the admin UI never shows them in full.
 function maskTarget(rule) {
   if (rule.channel === 'discord') return rule.target.replace(/\/[\w-]+$/, '/••••••••');
+  if (rule.channel === 'ntfy') return rule.target.replace(/\/([\w-]{0,3})[\w-]*$/, '/$1••••');
+  if (rule.channel === 'webhook') {
+    try {
+      const u = new URL(rule.target);
+      return u.pathname === '/' && !u.search ? u.origin : `${u.origin}/••••`;
+    } catch {
+      return '••••';
+    }
+  }
   return rule.target;
 }
 
@@ -760,13 +774,13 @@ export function registerAdmin(router) {
     '/admin/alerts',
     auth((ctx) => {
       const { r, errs } = parseRule(ctx.form, true);
-      if (errs.length) return sendHtml(ctx.res, 422, V.alertFormPage(view(ctx), { rule: r, components: components(), errorList: errs, isNew: true }));
+      if (errs.length) return sendHtml(ctx.res, 422, V.alertFormPage(view(ctx), { rule: { ...r, token: '' }, components: components(), errorList: errs, isNew: true }));
       const now = Date.now();
       const { lastInsertRowid } = run(
-        `INSERT INTO alert_rules (name, channel, target, on_down, on_recovery, on_degraded, on_incident, on_maintenance, on_tls_expiry,
+        `INSERT INTO alert_rules (name, channel, target, token, on_down, on_recovery, on_degraded, on_incident, on_maintenance, on_tls_expiry,
            scopes, component_ids, repeat_minutes, enabled, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        r.name, r.channel, r.target, r.on_down, r.on_recovery, r.on_degraded, r.on_incident, r.on_maintenance, r.on_tls_expiry,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        r.name, r.channel, r.target, r.token || null, r.on_down, r.on_recovery, r.on_degraded, r.on_incident, r.on_maintenance, r.on_tls_expiry,
         r.scopes, r.component_ids, r.repeat_minutes, r.enabled, now, now,
       );
       log.info('alert rule created', { id: Number(lastInsertRowid), channel: r.channel, by: ctx.user.username });
@@ -778,7 +792,7 @@ export function registerAdmin(router) {
     '/admin/alerts/:id',
     auth((ctx) => {
       const rule = mustGet('SELECT * FROM alert_rules WHERE id = ?', idParam(ctx));
-      sendHtml(ctx.res, 200, V.alertFormPage(view(ctx), { rule: { ...rule, masked_target: maskTarget(rule) }, components: components(), isNew: false }));
+      sendHtml(ctx.res, 200, V.alertFormPage(view(ctx), { rule: { ...rule, token: '', has_token: !!rule.token, masked_target: maskTarget(rule) }, components: components(), isNew: false }));
     }),
   );
 
@@ -790,12 +804,12 @@ export function registerAdmin(router) {
       const { r, errs } = parseRule(ctx.form, false);
       if (!r.target && r.channel !== existing.channel) errs.push('Enter a destination when changing the channel.');
       if (errs.length) {
-        return sendHtml(ctx.res, 422, V.alertFormPage(view(ctx), { rule: { ...r, id, masked_target: maskTarget(existing) }, components: components(), errorList: errs, isNew: false }));
+        return sendHtml(ctx.res, 422, V.alertFormPage(view(ctx), { rule: { ...r, id, token: '', has_token: !!existing.token, masked_target: maskTarget(existing) }, components: components(), errorList: errs, isNew: false }));
       }
       run(
-        `UPDATE alert_rules SET name = ?, channel = ?, target = ?, on_down = ?, on_recovery = ?, on_degraded = ?, on_incident = ?, on_maintenance = ?,
-           on_tls_expiry = ?, scopes = ?, component_ids = ?, repeat_minutes = ?, enabled = ?, updated_at = ? WHERE id = ?`,
-        r.name, r.channel, r.target || existing.target, r.on_down, r.on_recovery, r.on_degraded, r.on_incident, r.on_maintenance,
+        `UPDATE alert_rules SET name = ?, channel = ?, target = ?, token = ?, on_down = ?, on_recovery = ?, on_degraded = ?, on_incident = ?,
+           on_maintenance = ?, on_tls_expiry = ?, scopes = ?, component_ids = ?, repeat_minutes = ?, enabled = ?, updated_at = ? WHERE id = ?`,
+        r.name, r.channel, r.target || existing.target, r.clear_token ? null : r.token || existing.token, r.on_down, r.on_recovery, r.on_degraded, r.on_incident, r.on_maintenance,
         r.on_tls_expiry, r.scopes, r.component_ids, r.repeat_minutes, r.enabled, Date.now(), id,
       );
       redirect(ctx.res, '/admin/alerts?ok=saved');

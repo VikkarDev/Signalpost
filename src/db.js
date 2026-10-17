@@ -48,13 +48,22 @@ function migrate() {
     applied_at INTEGER NOT NULL
   )`);
   const applied = new Set(db.prepare('SELECT version FROM schema_migrations').all().map((r) => r.version));
-  for (const m of migrations) {
-    if (applied.has(m.version)) continue;
-    log.info('applying database migration', { version: m.version, name: m.name });
-    tx(() => {
-      db.exec(m.sql);
-      db.prepare('INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)').run(m.version, m.name, Date.now());
-    });
+  const pending = migrations.filter((m) => !applied.has(m.version));
+  // Table rebuilds would otherwise cascade deletes into child tables. The pragma can't
+  // change inside a transaction, so it's switched around the whole batch.
+  if (pending.length) db.exec('PRAGMA foreign_keys = OFF');
+  try {
+    for (const m of pending) {
+      log.info('applying database migration', { version: m.version, name: m.name });
+      tx(() => {
+        db.exec(m.sql);
+        const broken = db.prepare('PRAGMA foreign_key_check').all();
+        if (broken.length) throw new Error(`Migration ${m.version} left ${broken.length} broken foreign key(s)`);
+        db.prepare('INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)').run(m.version, m.name, Date.now());
+      });
+    }
+  } finally {
+    if (pending.length) db.exec('PRAGMA foreign_keys = ON');
   }
   const latest = migrations.at(-1)?.version ?? 0;
   const newest = db.prepare('SELECT MAX(version) AS v FROM schema_migrations').get().v ?? 0;

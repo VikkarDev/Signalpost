@@ -1,4 +1,4 @@
-// Alert rules -> Discord webhooks and SMTP email.
+// Alert rules -> Discord webhooks, SMTP email, ntfy and generic JSON webhooks.
 
 import nodemailer from 'nodemailer';
 import { config, smtpConfigured } from '../config.js';
@@ -8,7 +8,20 @@ import { formatDateTime, formatDuration } from '../lib/time.js';
 import { diagnose } from '../status.js';
 
 export const DISCORD_WEBHOOK_RE = /^https:\/\/(?:(?:ptb|canary)\.)?discord(?:app)?\.com\/api\/webhooks\/\d{5,30}\/[\w-]{20,200}$/;
+// https://ntfy.sh/my-topic or a self-hosted server, possibly under a sub-path.
+export const NTFY_TOPIC_RE = /^[\w-]{1,64}$/;
 const EMAIL_RE = /^[^\s@<>,;"]+@[^\s@<>,;"]+\.[^\s@<>,;"]+$/;
+
+// ntfy priority (1-5) and tags (shown as emoji in the app) per kind of message.
+const NTFY = {
+  down: { priority: 5, tags: ['rotating_light'] },
+  recovery: { priority: 3, tags: ['white_check_mark'] },
+  degraded: { priority: 4, tags: ['warning'] },
+  incident: { priority: 4, tags: ['warning'] },
+  resolved: { priority: 3, tags: ['white_check_mark'] },
+  maintenance: { priority: 3, tags: ['wrench'] },
+  info: { priority: 3, tags: ['information_source'] },
+};
 
 const COLORS = { down: 0xd73a49, recovery: 0x2da44e, degraded: 0xdbab09, incident: 0xe36209, resolved: 0x2da44e, maintenance: 0x0969da, info: 0x6e7781 };
 
@@ -21,6 +34,25 @@ export function parseEmails(text) {
   return { list, bad };
 }
 
+function httpUrl(text) {
+  try {
+    const u = new URL(text);
+    return (u.protocol === 'https:' || u.protocol === 'http:') && !u.username && !u.password ? u : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Splits a topic URL into the server's publish endpoint and the topic name. */
+export function ntfyEndpoint(target) {
+  const u = httpUrl(target);
+  if (!u || u.search || u.hash) return null;
+  const parts = u.pathname.split('/').filter(Boolean);
+  const topic = parts.pop();
+  if (!topic || !NTFY_TOPIC_RE.test(topic)) return null;
+  return { url: `${u.origin}/${parts.map((p) => `${p}/`).join('')}`, topic };
+}
+
 export function validateRuleTarget(channel, target) {
   if (channel === 'discord') {
     return DISCORD_WEBHOOK_RE.test(target) ? null : 'Enter a valid Discord webhook URL (https://discord.com/api/webhooks/…).';
@@ -31,6 +63,12 @@ export function validateRuleTarget(channel, target) {
     if (bad.length) return `Invalid email address: ${bad[0]}`;
     if (list.length > 20) return 'At most 20 recipients per rule.';
     return null;
+  }
+  if (channel === 'ntfy') {
+    return ntfyEndpoint(target) ? null : 'Enter the topic URL, e.g. https://ntfy.sh/my-servers (letters, digits, - and _ only).';
+  }
+  if (channel === 'webhook') {
+    return httpUrl(target) ? null : 'Enter an http:// or https:// URL (put credentials in the token field, not the URL).';
   }
   return 'Unknown channel.';
 }
@@ -88,6 +126,59 @@ async function sendDiscord(url, msg) {
   }
 }
 
+async function postJson(url, payload, token, what) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(10000),
+    redirect: 'error',
+  });
+  if (!res.ok) throw new Error(`${what} responded with HTTP ${res.status}`);
+}
+
+async function sendNtfy(target, token, msg) {
+  const { url, topic } = ntfyEndpoint(target);
+  const style = NTFY[msg.kind] ?? NTFY.info;
+  const lines = [msg.text, ...(msg.fields || []).map((f) => `${f.name}: ${f.value}`)].filter(Boolean);
+  // JSON publishing instead of headers, so titles with non-ASCII characters work.
+  await postJson(
+    url,
+    {
+      topic,
+      title: `${msg.title} · ${siteName()}`.slice(0, 250),
+      message: lines.join('\n').slice(0, 4000),
+      priority: style.priority,
+      tags: style.tags,
+      ...(msg.url ? { click: msg.url } : {}),
+    },
+    token,
+    'ntfy',
+  );
+}
+
+async function sendWebhook(target, token, msg, event) {
+  await postJson(
+    target,
+    {
+      site: siteName(),
+      event,
+      kind: msg.kind,
+      title: msg.title,
+      message: msg.text,
+      url: msg.url || null,
+      fields: Object.fromEntries((msg.fields || []).map((f) => [f.name, String(f.value)])),
+      sent_at: new Date().toISOString(),
+      // Slack and Mattermost incoming webhooks only read this one.
+      text: [msg.title, msg.text].filter(Boolean).join('\n'),
+    },
+    token,
+    'Webhook',
+  );
+}
+
 async function sendEmail(recipients, msg) {
   if (!smtpConfigured()) throw new Error('SMTP is not configured (set SMTP_HOST and SMTP_FROM)');
   const lines = [msg.text, '', ...(msg.fields || []).map((f) => `${f.name}: ${f.value}`)];
@@ -105,6 +196,8 @@ async function deliver(rule, msg, { monitorId = null, event }) {
   let error = null;
   try {
     if (rule.channel === 'discord') await sendDiscord(rule.target, msg);
+    else if (rule.channel === 'ntfy') await sendNtfy(rule.target, rule.token, msg);
+    else if (rule.channel === 'webhook') await sendWebhook(rule.target, rule.token, msg, event);
     else await sendEmail(parseEmails(rule.target).list, msg);
   } catch (err) {
     ok = false;

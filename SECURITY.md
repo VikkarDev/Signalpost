@@ -26,7 +26,7 @@ Notes on what's in place, mostly so you know what you're deploying.
 ### Secrets
 
 - Admin and SMTP passwords come from environment variables and are never stored in plain text.
-- Discord webhook URLs are stored in the database. They're masked in the admin UI and never shown publicly.
+- Discord and other webhook URLs, ntfy topics and access tokens are stored in the database. They're masked in the admin UI (tokens are never shown at all) and never shown publicly.
 - The database backup download contains webhook URLs. Keep backups private.
 
 ### What the public can see

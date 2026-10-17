@@ -184,4 +184,40 @@ CREATE INDEX idx_alert_log_time ON alert_log(sent_at);
     name: 'component groups',
     sql: `ALTER TABLE components ADD COLUMN group_name TEXT NOT NULL DEFAULT '';`,
   },
+  {
+    version: 3,
+    name: 'ntfy and webhook alerts',
+    // SQLite can't change a CHECK constraint, so the table is rebuilt. Foreign keys are
+    // off while migrations run (see db.js), so alert_log rows survive the DROP.
+    sql: `
+CREATE TABLE alert_rules_new (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  channel TEXT NOT NULL CHECK (channel IN ('discord', 'email', 'ntfy', 'webhook')),
+  target TEXT NOT NULL,
+  token TEXT,
+  on_down INTEGER NOT NULL DEFAULT 1,
+  on_recovery INTEGER NOT NULL DEFAULT 1,
+  on_degraded INTEGER NOT NULL DEFAULT 0,
+  on_incident INTEGER NOT NULL DEFAULT 1,
+  on_maintenance INTEGER NOT NULL DEFAULT 0,
+  on_tls_expiry INTEGER NOT NULL DEFAULT 1,
+  scopes TEXT NOT NULL DEFAULT 'internal,public,canary',
+  component_ids TEXT,
+  repeat_minutes INTEGER NOT NULL DEFAULT 0,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  last_sent_at INTEGER,
+  last_error TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+INSERT INTO alert_rules_new (id, name, channel, target, on_down, on_recovery, on_degraded, on_incident, on_maintenance,
+  on_tls_expiry, scopes, component_ids, repeat_minutes, enabled, last_sent_at, last_error, created_at, updated_at)
+SELECT id, name, channel, target, on_down, on_recovery, on_degraded, on_incident, on_maintenance,
+  on_tls_expiry, scopes, component_ids, repeat_minutes, enabled, last_sent_at, last_error, created_at, updated_at
+FROM alert_rules;
+DROP TABLE alert_rules;
+ALTER TABLE alert_rules_new RENAME TO alert_rules;
+`,
+  },
 ];

@@ -22,10 +22,20 @@ let targetStatus = 200;
 let closedPort;
 let cookie = '';
 let discordHits = [];
+let pushHits = [];
 
 function startTarget() {
   return new Promise((resolve) => {
     target = http.createServer((req, res) => {
+      if (req.url.startsWith('/ntfy/') || req.url.startsWith('/hook')) {
+        let body = '';
+        req.on('data', (c) => (body += c));
+        req.on('end', () => {
+          pushHits.push({ url: req.url, auth: req.headers.authorization || null, body: JSON.parse(body) });
+          res.writeHead(200).end('{}');
+        });
+        return;
+      }
       if (req.url.startsWith('/api/webhooks/')) {
         let body = '';
         req.on('data', (c) => (body += c));
@@ -183,6 +193,45 @@ test('alert rule validation', async () => {
   assert.match(r.text, /valid Discord webhook/);
   const email = await req('POST', '/admin/alerts', { _csrf: token, name: 'mail', channel: 'email', target: 'ops@example.com', scope_public: '1', on_down: '1', enabled: '1' });
   assert.equal(email.status, 303);
+});
+
+test('ntfy and webhook rules deliver, and never show their secrets', async () => {
+  const token = await csrf('/admin/alerts');
+  const rule = { _csrf: token, scope_public: '1', on_down: '1', enabled: '1' };
+  const bad = await req('POST', '/admin/alerts', { ...rule, name: 'bad', channel: 'ntfy', target: 'https://ntfy.sh/' });
+  assert.equal(bad.status, 422);
+  assert.match(bad.text, /topic URL/);
+
+  const ntfy = await req('POST', '/admin/alerts', { ...rule, name: 'phone', channel: 'ntfy', target: `http://127.0.0.1:${targetPort}/ntfy/secret-topic`, token: 'tk_secret123' });
+  assert.equal(ntfy.status, 303);
+  const hook = await req('POST', '/admin/alerts', { ...rule, name: 'hook', channel: 'webhook', target: `http://127.0.0.1:${targetPort}/hook/abc` });
+  assert.equal(hook.status, 303);
+
+  const list = await req('GET', '/admin/alerts');
+  const id = (name) => Number(new RegExp(`/admin/alerts/(\\d+)">${name}<`).exec(list.text)[1]);
+  pushHits = [];
+  await req('POST', `/admin/alerts/${id('phone')}/test`, { _csrf: token });
+  await req('POST', `/admin/alerts/${id('hook')}/test`, { _csrf: token });
+  const n = pushHits.find((h) => h.url.startsWith('/ntfy/'));
+  assert.equal(n.url, '/ntfy/');
+  assert.equal(n.auth, 'Bearer tk_secret123');
+  assert.equal(n.body.topic, 'secret-topic');
+  assert.match(n.body.title, /Test notification/);
+  const w = pushHits.find((h) => h.url === '/hook/abc');
+  assert.equal(w.auth, null);
+  assert.equal(w.body.event, 'test');
+  assert.match(w.body.text, /Test notification/);
+
+  // Saving without re-entering the token keeps it; the edit page shows neither token nor full topic.
+  const edit = await req('GET', `/admin/alerts/${id('phone')}`);
+  assert.doesNotMatch(edit.text, /tk_secret123|secret-topic/);
+  assert.match(edit.text, /sec••••/);
+  await req('POST', `/admin/alerts/${id('phone')}`, { ...rule, name: 'phone', channel: 'ntfy', target: '', token: '' });
+  pushHits = [];
+  await req('POST', `/admin/alerts/${id('phone')}/test`, { _csrf: token });
+  assert.equal(pushHits[0].auth, 'Bearer tk_secret123');
+
+  for (const name of ['phone', 'hook']) await req('POST', `/admin/alerts/${id(name)}/delete`, { _csrf: token });
 });
 
 test('manual checks record real results and state', async () => {

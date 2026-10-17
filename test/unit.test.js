@@ -4,7 +4,13 @@ import { localInputToTs, tsToLocalInput, dayKey, lastDays } from '../src/lib/tim
 import { parseExpectedStatus } from '../src/monitor/probes.js';
 import { liveComponentState, diagnose, formatUptime } from '../src/status.js';
 import { html, raw } from '../src/lib/html.js';
-import { DISCORD_WEBHOOK_RE, parseEmails } from '../src/notify/index.js';
+import { DISCORD_WEBHOOK_RE, parseEmails, ntfyEndpoint, validateRuleTarget } from '../src/notify/index.js';
+import { DatabaseSync } from 'node:sqlite';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { migrations } from '../src/migrations.js';
+import { openDatabase, closeDatabase, all as dbAll } from '../src/db.js';
 import { ago } from '../src/views/layout.js';
 
 test('timezone conversion round-trips, including DST', () => {
@@ -87,4 +93,43 @@ test('check times are flagged late once a check is overdue', () => {
   assert.match(fresh, /data-late-after="150000"/);
   assert.match(String(ago(Date.now() - 600000, 'checked ', 150000)), /class="ago late"/);
   assert.doesNotMatch(String(ago(Date.now() - 600000)), /late/);
+});
+
+test('ntfy topic URLs split into server and topic', () => {
+  assert.deepEqual(ntfyEndpoint('https://ntfy.sh/my-servers'), { url: 'https://ntfy.sh/', topic: 'my-servers' });
+  assert.deepEqual(ntfyEndpoint('https://home.example/ntfy/alerts_1'), { url: 'https://home.example/ntfy/', topic: 'alerts_1' });
+  assert.equal(ntfyEndpoint('https://ntfy.sh/'), null);
+  assert.equal(ntfyEndpoint('https://ntfy.sh/bad topic'), null);
+  assert.equal(ntfyEndpoint('https://user:pw@ntfy.sh/topic'), null);
+  assert.equal(ntfyEndpoint('ftp://ntfy.sh/topic'), null);
+  assert.equal(validateRuleTarget('webhook', 'https://hooks.example/x?y=1'), null);
+  assert.ok(validateRuleTarget('webhook', 'javascript:alert(1)'));
+});
+
+test('migration 3 keeps existing alert rules and their delivery log', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'signalpost-mig-'));
+  const file = path.join(dir, 'old.db');
+  const old = new DatabaseSync(file);
+  old.exec('CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at INTEGER NOT NULL)');
+  for (const m of migrations.filter((m) => m.version <= 2)) {
+    old.exec(m.sql);
+    old.prepare('INSERT INTO schema_migrations VALUES (?, ?, ?)').run(m.version, m.name, 0);
+  }
+  old.exec(`INSERT INTO alert_rules (id, name, channel, target, created_at, updated_at) VALUES (7, 'mail', 'email', 'a@b.se', 0, 0);
+    INSERT INTO alert_log (rule_id, event, sent_at, ok) VALUES (7, 'test', 1, 1);`);
+  old.close();
+
+  openDatabase(file);
+  try {
+    assert.equal(dbAll('SELECT * FROM alert_rules')[0].target, 'a@b.se');
+    assert.equal(dbAll('SELECT * FROM alert_log WHERE rule_id = 7').length, 1);
+    assert.equal(dbAll('PRAGMA foreign_keys')[0].foreign_keys, 1);
+    // The new channels pass the CHECK constraint, and deleting a rule still cascades.
+    dbAll(`INSERT INTO alert_rules (name, channel, target, created_at, updated_at) VALUES ('p', 'ntfy', 'https://ntfy.sh/x', 0, 0) RETURNING id`);
+    dbAll('DELETE FROM alert_rules WHERE id = 7 RETURNING id');
+    assert.equal(dbAll('SELECT * FROM alert_log').length, 0);
+  } finally {
+    closeDatabase();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

@@ -121,7 +121,7 @@ export function dashboardPage(ctx, { components, unassigned, canaries, totals })
           <li><a href="/admin/components/new">Create a component</a> for each service shown publicly (e.g. "Website").</li>
           <li><a href="/admin/monitors/new">Add monitors</a>: an <strong>internal</strong> check (e.g. <code>http://container-name:port</code>) and a <strong>public</strong> check (e.g. <code>https://app.example.com</code>) for each component.</li>
           <li>Add a <strong>canary</strong> or two (e.g. <code>https://1.1.1.1</code>). If those fail too, it's your internet connection and not your proxy.</li>
-          <li><a href="/admin/alerts/new">Add an alert rule</a> for Discord or email.</li></ol></div>`
+          <li><a href="/admin/alerts/new">Add an alert rule</a> for Discord, ntfy, a webhook or email.</li></ol></div>`
       : ''}
     ${components.map(
       (c) => html`<section class="card">
@@ -467,6 +467,9 @@ export function maintenanceFormPage(ctx, { item, components, selected, errorList
 
 // ---------------------------------------------------------------- alerts
 
+const CHANNELS = { discord: 'Discord webhook', ntfy: 'ntfy (phone push)', webhook: 'Webhook (JSON POST)', email: 'Email (SMTP)' };
+const CHANNEL_NAMES = { discord: 'Discord', ntfy: 'ntfy', webhook: 'Webhook', email: 'Email' };
+
 export function alertsPage(ctx, { rules, smtpOk, recent }) {
   return adminLayout({
     ...ctx,
@@ -480,7 +483,7 @@ export function alertsPage(ctx, { rules, smtpOk, recent }) {
       <thead><tr><th>Name</th><th>Channel</th><th>Events</th><th>Last sent</th><th></th></tr></thead>
       <tbody>${rules.map(
         (r) => html`<tr class="${r.enabled ? '' : 'disabled'}"><td><a href="/admin/alerts/${r.id}">${r.name}</a>${r.enabled ? '' : html` <span class="pill">disabled</span>`}</td>
-        <td>${r.channel === 'discord' ? 'Discord' : 'Email'}</td>
+        <td>${CHANNEL_NAMES[r.channel] || r.channel}</td>
         <td class="small">${[r.on_down && 'down', r.on_recovery && 'recovery', r.on_degraded && 'degraded', r.on_incident && 'incidents', r.on_maintenance && 'maintenance', r.on_tls_expiry && 'TLS expiry'].filter(Boolean).join(', ')}${r.repeat_minutes ? ` · repeat ${r.repeat_minutes} min` : ''}</td>
         <td>${r.last_sent_at ? ago(r.last_sent_at) : '—'}${r.last_error ? html`<div class="err small">${r.last_error}</div>` : ''}</td>
         <td class="row-actions">${postButton({ action: `/admin/alerts/${r.id}/test`, csrf: ctx.csrf, label: 'Send test', cls: 'link-button' })}</td></tr>`,
@@ -513,12 +516,22 @@ export function alertFormPage(ctx, { rule: r, components, errorList, isNew }) {
     <form method="post" action="${isNew ? '/admin/alerts' : `/admin/alerts/${r.id}`}" class="card form-grid">
       ${csrfField(ctx.csrf)}
       ${field('Name', input('name', r.name, { required: true, maxlength: 100 }))}
-      ${field('Channel', select('channel', [['discord', 'Discord webhook'], ['email', 'Email (SMTP)']], r.channel))}
+      ${field('Channel', select('channel', Object.entries(CHANNELS), r.channel))}
       ${field(
         'Destination',
-        input('target', isNew ? r.target : '', { maxlength: 2000, placeholder: isNew ? 'https://discord.com/api/webhooks/…  or  ops@example.com, me@example.com' : 'Leave blank to keep the current destination', spellcheck: 'false', autocomplete: 'off' }),
-        isNew ? 'Discord: webhook URL (Server settings → Integrations → Webhooks). Email: comma-separated addresses.' : html`Current: <code>${r.masked_target}</code>`,
+        input('target', isNew ? r.target : '', { maxlength: 2000, placeholder: isNew ? 'Webhook URL, ntfy topic URL or email addresses' : 'Leave blank to keep the current destination', spellcheck: 'false', autocomplete: 'off' }),
+        html`${isNew ? '' : html`Current: <code>${r.masked_target}</code><br>`}
+          Discord: webhook URL (Server settings → Integrations → Webhooks).
+          ntfy: topic URL, e.g. <code>https://ntfy.sh/pick-something-hard-to-guess</code>.
+          Webhook: any URL that accepts a JSON POST.
+          Email: comma-separated addresses.`,
       )}
+      ${field(
+        'Access token (optional)',
+        input('token', '', { type: 'password', maxlength: 500, placeholder: r.has_token ? 'Leave blank to keep the current token' : '', autocomplete: 'off' }),
+        html`ntfy and webhook only. Sent as <code>Authorization: Bearer …</code>, e.g. an ntfy access token for a protected topic.`,
+      )}
+      ${r.has_token ? html`<div class="field">${checkbox('clear_token', false, 'Remove the saved token')}</div>` : ''}
       <fieldset class="field"><legend>Send when</legend>
         ${checkbox('on_down', r.on_down, 'A monitor goes down')}
         ${checkbox('on_recovery', r.on_recovery, 'A monitor recovers')}

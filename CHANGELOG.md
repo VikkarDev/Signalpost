@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.8
+
+- New alert channels: **ntfy** for push notifications to your phone (ntfy.sh or your own server, optional access token), and **webhook** for any URL that takes a JSON POST (Home Assistant, n8n, Slack-style webhooks)
+- Webhook URLs, ntfy topics and tokens are masked in the admin area
+- Database migration 3 runs automatically on start. Existing alert rules and their history are kept
+
 ## 1.2.7
 
 - "checked 12s ago" and "Updated ..." count up live in the browser, every second, without extra requests. Uses the server's clock, so a wrong clock on the visitor's device doesn't matter. Hover for the exact time.
